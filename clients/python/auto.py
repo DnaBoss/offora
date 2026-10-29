@@ -77,7 +77,7 @@ def open_once(url, key):
         return
     marker.parent.mkdir(mode=0o700, exist_ok=True)
     marker.touch()
-    webbrowser.open(url)
+    open_browser(url)
 
 
 BRIDGE_PORT = 47820
@@ -116,3 +116,8 @@ def serve_bridge(base_url, key):
                 time.sleep(10)
 
     threading.Thread(target=run, daemon=True).start()
+
+
+def open_browser(url):
+    if not os.environ.get('OFFORA_NO_BROWSER'):
+        webbrowser.open(url)

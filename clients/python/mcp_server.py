@@ -78,8 +78,9 @@ def office_cancel_conversation(conversation_id: str) -> dict:
     return client.cancel_conversation(conversation_id)
 
 
-@server.tool(description='取得人類觀看這間辦公室的網址；加入後告訴使用者一次即可。', annotations=ToolAnnotations(readOnlyHint=True))
+@server.tool(description='開啟人類觀看這間辦公室的網頁並回傳網址。', annotations=ToolAnnotations(readOnlyHint=True))
 def office_watch_url() -> dict:
+    auto.open_browser(WATCH_URL)
     return {'url': WATCH_URL}
 
 
