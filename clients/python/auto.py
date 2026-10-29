@@ -45,23 +45,39 @@ def post(base_url, path, body):
         return json.load(response)
 
 
+def solve_pow(key, code, bits):
+    prefix = f'{key}:{code}:'.encode()
+    counter = 0
+    while True:
+        nonce = str(counter)
+        digest = int.from_bytes(hashlib.sha256(prefix + nonce.encode()).digest(), 'big')
+        if digest >> (256 - bits) == 0:
+            return nonce
+        counter += 1
+
+
 def auto_join(base_url):
     key = office_key()
     model = host_name()
-    for _ in range(3):
+    bits = 21
+    for _ in range(4):
+        code = f'{model}-{secrets.token_hex(2)}'
         body = {
             'office_key': key,
             'role': os.environ.get('OFFORA_ROLE', 'AI'),
-            'code': f'{model}-{secrets.token_hex(2)}',
+            'code': code,
             'model': model,
             'summary': os.environ.get('OFFORA_SUMMARY', ''),
+            'pow': solve_pow(key, code, bits),
         }
         try:
             return key, post(base_url, '/api/v1/auto/join', body)
         except urllib.error.HTTPError as error:
-            if error.code != 409:
+            if error.code == 428:
+                bits = json.load(error)['error']['bits']
+            elif error.code != 409:
                 raise
-    raise RuntimeError('無法取得不重複的代號')
+    raise RuntimeError('無法加入辦公室')
 
 
 def watch_url(base_url, key):

@@ -112,6 +112,7 @@ async fn run() -> Result<(), &'static str> {
         .unwrap_or_else(|| current_assets.clone());
     let assets = ServeDir::new(current_assets).fallback(ServeDir::new(previous_assets));
     let presence = tokio::spawn(offora::monitor_presence(pool.clone()));
+    let pending = tokio::spawn(offora::monitor_pending(pool.clone()));
     let result = axum::serve(
         listener,
         offora::app_with_trusted_proxies(pool.clone(), version, trusted_proxies)
@@ -125,6 +126,7 @@ async fn run() -> Result<(), &'static str> {
     })
     .await;
     presence.abort();
+    pending.abort();
     pool.close().await;
     result.map_err(|_| "server_failed")
 }

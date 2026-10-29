@@ -9,6 +9,10 @@ mod observers;
 mod sessions;
 mod sockets;
 
+pub async fn monitor_pending(pool: PgPool) {
+    auto::monitor_pending(pool).await
+}
+
 pub async fn monitor_presence(pool: PgPool) {
     let mut timer = tokio::time::interval(std::time::Duration::from_secs(5));
     loop {
@@ -66,8 +70,14 @@ pub fn app_with_trusted_proxies(
         .route("/api/v1/spaces/{space}/channels", post(management::channel))
         .route("/api/v1/agents", post(management::agent))
         .route("/api/v1/management", get(management::catalog))
-        .route("/api/v1/auto/join", post(auto::join))
-        .route("/api/v1/auto/watch", post(auto::watch))
+        .route(
+            "/api/v1/auto/join",
+            post(auto::join).layer(axum::extract::DefaultBodyLimit::max(4096)),
+        )
+        .route(
+            "/api/v1/auto/watch",
+            post(auto::watch).layer(axum::extract::DefaultBodyLimit::max(1024)),
+        )
         .route("/api/v1/observers", post(observers::create))
         .route(
             "/api/v1/spaces/{space}/agents/{agent}/revoke",

@@ -7,6 +7,48 @@ use sqlx::{PgPool, Row};
 
 const MAX_AGENTS_PER_OFFICE: i64 = 200;
 
+fn env_number(name: &str, default: i64) -> i64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
+fn pow_bits() -> u32 {
+    env_number("OFFORA_AUTO_POW_BITS", 21).clamp(0, 32) as u32
+}
+
+fn pending_seconds() -> i64 {
+    env_number("OFFORA_AUTO_PENDING_SECONDS", 600)
+}
+
+fn max_pending() -> i64 {
+    env_number("OFFORA_AUTO_MAX_PENDING", 300)
+}
+
+fn pow_ok(key: &str, code: &str, nonce: &str, bits: u32) -> bool {
+    let digest = Sha256::digest(format!("{key}:{code}:{nonce}").as_bytes());
+    let mut remaining = bits;
+    for byte in digest.iter() {
+        if remaining == 0 {
+            return true;
+        }
+        let take = remaining.min(8);
+        if byte >> (8 - take) != 0 {
+            return false;
+        }
+        remaining -= take;
+    }
+    remaining == 0
+}
+
+const PENDING: &str = "NOT EXISTS (SELECT 1 FROM sessions s WHERE s.space_id=a.space_id AND NOT s.is_observer AND s.last_heartbeat_at IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.space_id=a.space_id) AND NOT EXISTS (SELECT 1 FROM conversations c WHERE c.space_id=a.space_id)";
+
+enum Refusal {
+    Full,
+    Busy,
+}
+
 fn enabled() -> bool {
     std::env::var("OFFORA_AUTO_JOIN").is_ok_and(|v| v == "1")
 }
@@ -50,7 +92,7 @@ struct Office {
 async fn ensure_office(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     key_hash: &[u8],
-) -> Result<Office, sqlx::Error> {
+) -> Result<Option<Office>, sqlx::Error> {
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
         .bind(hex(key_hash))
         .execute(&mut **tx)
@@ -61,10 +103,18 @@ async fn ensure_office(
             .fetch_optional(&mut **tx)
             .await?
     {
-        return Ok(Office {
+        return Ok(Some(Office {
             space: row.try_get("space_id")?,
             channel: row.try_get("channel_id")?,
-        });
+        }));
+    }
+    let pending: i64 = sqlx::query_scalar(&format!(
+        "SELECT count(*) FROM auto_offices a WHERE {PENDING}"
+    ))
+    .fetch_one(&mut **tx)
+    .await?;
+    if pending >= max_pending() {
+        return Ok(None);
     }
     let short = &hex(key_hash)[..24];
     let owner = format!("auto-{short}");
@@ -91,18 +141,20 @@ async fn ensure_office(
     .bind(&channel)
     .execute(&mut **tx)
     .await?;
-    Ok(Office {
+    Ok(Some(Office {
         space: owner,
         channel,
-    })
+    }))
 }
 
 async fn new_agent(
     pool: &PgPool,
     key_hash: &[u8],
-) -> Result<Option<(Office, String)>, sqlx::Error> {
+) -> Result<Result<(Office, String), Refusal>, sqlx::Error> {
     let mut tx = pool.begin().await?;
-    let office = ensure_office(&mut tx, key_hash).await?;
+    let Some(office) = ensure_office(&mut tx, key_hash).await? else {
+        return Ok(Err(Refusal::Busy));
+    };
     let count: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM agent_credentials WHERE space_id=$1 AND revoked_at IS NULL",
     )
@@ -110,7 +162,7 @@ async fn new_agent(
     .fetch_one(&mut *tx)
     .await?;
     if count >= MAX_AGENTS_PER_OFFICE {
-        return Ok(None);
+        return Ok(Err(Refusal::Full));
     }
     let agent = random_secret();
     sqlx::query("INSERT INTO agents (id,owner_id,name) VALUES ($1,$2,'auto')")
@@ -136,7 +188,7 @@ async fn new_agent(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
-    Ok(Some((office, token)))
+    Ok(Ok((office, token)))
 }
 
 pub async fn join(
@@ -169,14 +221,31 @@ pub async fn join(
             );
         }
     };
+    let bits = pow_bits();
+    let nonce = body.get("pow").and_then(Value::as_str).unwrap_or("");
+    if nonce.len() > 32 || !pow_ok(key, code, nonce, bits) {
+        return (
+            StatusCode::PRECONDITION_REQUIRED,
+            Json(
+                json!({"error":{"code":"pow_required","message":"請附上加入證明","retryable":true,"bits":bits}}),
+            ),
+        );
+    }
     let key_hash = Sha256::digest(key.as_bytes());
     let (office, token) = match new_agent(&state.pool, key_hash.as_slice()).await {
-        Ok(Some(v)) => v,
-        Ok(None) => {
+        Ok(Ok(v)) => v,
+        Ok(Err(Refusal::Full)) => {
             return error(
                 StatusCode::TOO_MANY_REQUESTS,
                 "office_full",
                 "此辦公室的 AI 數量已達上限",
+            );
+        }
+        Ok(Err(Refusal::Busy)) => {
+            return error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "office_busy",
+                "目前等待加入的新辦公室太多，請稍後再試",
             );
         }
         Err(_) => {
@@ -294,4 +363,67 @@ async fn create_watcher(
         .execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(Some((channel, secret)))
+}
+
+pub async fn expire_pending(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let spaces: Vec<String> = sqlx::query_scalar(&format!(
+        "SELECT a.space_id FROM auto_offices a WHERE a.created_at < now() - make_interval(secs => $1::double precision) AND {PENDING} ORDER BY a.created_at LIMIT 50"
+    ))
+    .bind(pending_seconds() as f64)
+    .fetch_all(pool)
+    .await?;
+    let mut removed = 0;
+    for space in spaces {
+        let mut tx = pool.begin().await?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(&space)
+            .execute(&mut *tx)
+            .await?;
+        let still: bool = sqlx::query_scalar(&format!(
+            "SELECT EXISTS (SELECT 1 FROM auto_offices a WHERE a.space_id=$1 AND {PENDING})"
+        ))
+        .bind(&space)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !still {
+            continue;
+        }
+        for statement in [
+            "DELETE FROM socket_tickets WHERE session_id IN (SELECT id FROM sessions WHERE space_id=$1)",
+            "DELETE FROM message_reads WHERE space_id=$1",
+            "DELETE FROM channel_events WHERE space_id=$1",
+            "DELETE FROM channel_event_cursors WHERE space_id=$1",
+            "DELETE FROM message_delivery WHERE space_id=$1",
+            "DELETE FROM channel_message_cursors WHERE space_id=$1",
+            "DELETE FROM sessions WHERE space_id=$1",
+            "DELETE FROM channel_grants WHERE space_id=$1",
+            "DELETE FROM agent_credentials WHERE space_id=$1",
+            "DELETE FROM agents WHERE owner_id=$1",
+            "DELETE FROM auto_offices WHERE space_id=$1",
+            "DELETE FROM channels WHERE space_id=$1",
+            "DELETE FROM spaces WHERE id=$1",
+            "DELETE FROM owners WHERE id=$1",
+        ] {
+            sqlx::query(statement)
+                .bind(&space)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
+        removed += 1;
+    }
+    Ok(removed)
+}
+
+pub async fn monitor_pending(pool: PgPool) {
+    if !enabled() {
+        return;
+    }
+    let mut timer = tokio::time::interval(std::time::Duration::from_secs(10));
+    loop {
+        timer.tick().await;
+        if expire_pending(&pool).await.is_err() {
+            tracing::error!(code = "auto_expiry_failed", "無法清除未啟用的辦公室");
+        }
+    }
 }
