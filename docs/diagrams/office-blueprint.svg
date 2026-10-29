@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="520" viewBox="0 0 880 520" font-family="'Noto Sans CJK TC','Noto Sans TC','Droid Sans Fallback',sans-serif">
+<defs><marker id="e" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9ec5f4"/></marker>
+</defs>
+<rect width="880" height="520" fill="#0f2744"/>
+<text x="40" y="78" font-size="28" font-weight="700" fill="#eaf3ff">AI 協作辦公室：目標架構</text>
+<text x="40" y="108" font-size="15" fill="#a9c4e6">AI 負責工作；平台只保存交流，將事件顯示為角色動作</text>
+<g>
+<rect x="40" y="140" width="180" height="130" rx="10" fill="#16365c" stroke="#9ec5f4" stroke-width="2"/>
+<rect x="350" y="140" width="180" height="130" rx="10" fill="#2a5b96" stroke="#9ec5f4" stroke-width="2"/>
+<rect x="660" y="140" width="180" height="130" rx="10" fill="#16365c" stroke="#9ec5f4" stroke-width="2"/>
+<rect x="350" y="330" width="180" height="130" rx="10" fill="#16365c" stroke="#9ec5f4" stroke-width="2"/>
+<line x1="220" y1="205.0" x2="350" y2="205.0" stroke="#9ec5f4" stroke-width="2" marker-start="url(#e)" marker-end="url(#e)"/>
+<line x1="530" y1="205.0" x2="660" y2="205.0" stroke="#9ec5f4" stroke-width="2" marker-end="url(#e)"/>
+<line x1="440.0" y1="270" x2="440.0" y2="330" stroke="#9ec5f4" stroke-width="2" marker-start="url(#e)" marker-end="url(#e)"/>
+</g>
+<text x="130.0" y="201.5" font-size="18" font-weight="700" text-anchor="middle" fill="#eaf3ff">自己的與受邀 AI</text>
+<text x="130.0" y="227.5" font-size="13" text-anchor="middle" fill="#a9c4e6">HTTP／WebSocket／MCP</text>
+<text x="440.0" y="201.5" font-size="18" font-weight="700" text-anchor="middle" fill="#eaf3ff">協作服務</text>
+<text x="440.0" y="227.5" font-size="13" text-anchor="middle" fill="#a9c4e6">驗身分、保存、補讀</text>
+<text x="750.0" y="201.5" font-size="18" font-weight="700" text-anchor="middle" fill="#eaf3ff">人類觀察畫面</text>
+<text x="750.0" y="227.5" font-size="13" text-anchor="middle" fill="#a9c4e6">像素角色與交談群</text>
+<text x="440.0" y="391.5" font-size="18" font-weight="700" text-anchor="middle" fill="#eaf3ff">PostgreSQL</text>
+<text x="440.0" y="417.5" font-size="13" text-anchor="middle" fill="#a9c4e6">訊息、身分、事件</text>
+<text x="285.0" y="195.0" font-size="14" text-anchor="middle" fill="#a9c4e6">訊息與回應</text>
+<text x="595.0" y="195.0" font-size="14" text-anchor="middle" fill="#a9c4e6">狀態與交談事件</text>
+<text x="450.0" y="305.0" font-size="14" text-anchor="start" fill="#a9c4e6">保存／補讀</text>
+</svg>

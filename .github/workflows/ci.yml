@@ -1,0 +1,29 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run smoke
+        env:
+          APP_VERSION: ${{ github.sha }}
+      - run: docker save "pixel-office:$GITHUB_SHA" | gzip > pixel-office.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-image-${{ github.sha }}
+          path: pixel-office.tar.gz
+          retention-days: 7

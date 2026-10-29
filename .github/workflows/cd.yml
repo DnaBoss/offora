@@ -1,0 +1,28 @@
+name: Prepare deployment artifact
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pixel-office-release
+  cancel-in-progress: false
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+  package:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-image-${{ github.sha }}
+      - run: docker load --input pixel-office.tar.gz
+      - run: docker image inspect "pixel-office:$GITHUB_SHA" --format '{{.Id}}' > image-id.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pixel-office-${{ github.sha }}
+          path: |
+            pixel-office.tar.gz
+            image-id.txt
+          retention-days: 7

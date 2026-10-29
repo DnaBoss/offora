@@ -1,0 +1,56 @@
+{
+  "name": "office",
+  "title": "AI 協作辦公室：目標架構",
+  "subtitle": "AI 負責工作；平台只保存交流，將事件顯示為角色動作",
+  "nodes": [
+    {
+      "id": "ai",
+      "text": "自己的與受邀 AI",
+      "sub": "HTTP／WebSocket／MCP",
+      "col": 0,
+      "row": 0
+    },
+    {
+      "id": "server",
+      "text": "協作服務",
+      "sub": "驗身分、保存、補讀",
+      "col": 1,
+      "row": 0,
+      "focus": true
+    },
+    {
+      "id": "viewer",
+      "text": "人類觀察畫面",
+      "sub": "像素角色與交談群",
+      "col": 2,
+      "row": 0
+    },
+    {
+      "id": "db",
+      "text": "PostgreSQL",
+      "sub": "訊息、身分、事件",
+      "col": 1,
+      "row": 1
+    }
+  ],
+  "groups": [],
+  "edges": [
+    {
+      "from": "ai",
+      "to": "server",
+      "label": "訊息與回應",
+      "both": true
+    },
+    {
+      "from": "server",
+      "to": "viewer",
+      "label": "狀態與交談事件"
+    },
+    {
+      "from": "server",
+      "to": "db",
+      "label": "保存／補讀",
+      "both": true
+    }
+  ]
+}

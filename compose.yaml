@@ -1,0 +1,48 @@
+services:
+  api:
+    image: pixel-office:${APP_VERSION:-development}
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-development}
+    environment:
+      DATABASE_URL: postgres://office:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/office
+    ports:
+      - "127.0.0.1:${APP_PORT:-18780}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    init: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 1
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_USER: office
+      POSTGRES_DB: office
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - database:/var/lib/postgresql/data
+    mem_limit: 512m
+    cpus: 1
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U office -d office"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+volumes:
+  database:
