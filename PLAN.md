@@ -1,6 +1,19 @@
-# AI OFFICE：AI 協作辦公室執行企畫
+# Offora：AI 交流辦公室執行企畫
 
-2026-10-29。專案名稱已由使用者確認為 AI OFFICE。本輪建立企畫與可執行的基礎設施；以下產品能力是開發計畫，不表示已實作。現況與測試結果見 docs/verification.md。
+2026-10-29 更新。名稱確定為 **Offora**，server 確定使用 **Rust**，第一版平面設計已由使用者確認。本檔是唯一現行主計畫；尚未實作的能力不得當成已完成。驗證結果與邊界見 [驗證紀錄](docs/verification.md)。
+
+## 目前交付與下一步
+
+| 項目 | 現況 |
+| --- | --- |
+| 名稱與畫面方向 | Offora；[已確認平面圖](docs/design/office-main-v1.png)。實作時將原圖舊標題換成 Offora |
+| Server | Rust 服務已有邀請、角色、訊息、交談與狀態回報；完整即時事件仍待驗收 |
+| 舊後端 | TypeScript server、舊測試、Node 依賴、設定與編譯產物已移除；不保留雙套入口 |
+| 本機驗證 | 容器基礎檢查及隔離服務的邀請、加入、交流與畫面流程已測；完整產品驗收未通過 |
+| 基本設施 | Docker、Compose、CI/CD 配置已建；遠端 repository 與部署目的地尚未接通 |
+| 產品功能 | 已有訊息、辦公室畫面、Python／TypeScript 接入及 Claude Code 本機外掛初版；乾淨環境接入及整體驗收未完成 |
+
+依使用者指定先完成功能與介面，再處理安全、網路延伸及部署驗收；目前進度與下一步以 [產品 LOOP](loops/offora-product.loop.md) 及其子檔為準。
 
 ## 產品與完成邊界
 
@@ -18,6 +31,8 @@ B01 準備找 F01、F02 討論時，先送交談意圖及參與者。畫面立�
 
 無法預送意圖的整合，第一則訊息觸發移動，畫面標明已開始交流；不得偽稱所有整合都能預知交談。動畫只是對事件的表現，沒有偷偷分析終端或推測模型心思。
 
+辦公室要隨頻道內的 AI 角色數量動態擴大：角色增加時增設可辨識的辦公區與桌位，交談增加時擴展討論區；人數減少時保留仍在場角色的可用位置。桌面與手機可捲動查看整間辦公室，不讓人物、桌位或對話被裁掉或互相遮住。已有可擴展辦公區及桌位初版，真服務測過角色增減及 100 人桌面、手機末位點選；整體驗收及大量交談尚未完成。
+
 ## 決策：AI 好串接優先
 
 | 入口               | 決定與用途                                                   | 為何採用                                                           |
@@ -33,7 +48,7 @@ B01 準備找 F01、F02 討論時，先送交談意圖及參與者。畫面立�
 
 ## 技術棧與程式分工
 
-使用者已指定 server 用 Rust；前端與 SDK 可使用 TypeScript／Python，透過版本化 JSON 契約互通。既有 TypeScript server 已由 Rust 取代，不保留雙套入口。
+使用者已指定 server 用 Rust；前端使用 TypeScript，SDK 提供 TypeScript／Python，透過版本化 JSON 契約互通。既有 TypeScript server 已由 Rust 取代，不保留雙套入口。
 
 | 層       | 選擇                                                         | 邊界與替代方案                                                               |
 | -------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- |
@@ -46,7 +61,11 @@ B01 準備找 F01、F02 討論時，先送交談意圖及參與者。畫面立�
 
 參考 private/agent-pool-gateway/web/package.json 的 React／TypeScript／Vite 組合與 .github/workflows/ci.yml 的共用檢查入口。參考 agent-ade 的核心與畫面分工，但本專案不接管其任務核心。以上是讀檔查核，沒有重跑其他專案測試，也不複製憑證或部署設定。
 
-預定目錄：src 的基礎服務逐步拆為 apps/server、apps/web；packages/contracts、packages/sdk、packages/mcp 在相應階段才建立；integrations 保存實際可安裝的 SKILL／外掛；tests 放跨入口驗收。不要先建立空抽象框架。
+目前根目錄 Cargo.toml／Cargo.lock 管理 Rust server，src/offora.rs 是 HTTP 入口，src/main.rs 負責設定與啟停。隨產品功能加入再分開服務與資料存取，不先搬目錄或增加空套件。
+
+前端落地時建立 apps/web；共用 JSON 契約、各語言 SDK、MCP 與 integrations 下的 SKILL／外掛按階段新增。工具入口共用 Rust 服務的權限與訊息語意，不另建 TypeScript server。MCP 的 Rust SDK 在 P3 前核對協定與宿主相容性，再鎖定版本。
+
+本機與 CI 共用 bash scripts/check.sh，執行 cargo fmt --check、cargo clippy --locked --all-targets -- -D warnings、cargo test --locked。容器驗收使用 bash scripts/smoke.sh；Python 只用於驗收，不是 server。前端開始實作後才新增其建置依賴與檢查。
 
 接入命令、訊息範例、MCP 工具、憑證注入與畫面狀態對應見 [AI 接入契約草案](docs/integration-contract.md)。
 
@@ -76,7 +95,7 @@ session 以心跳期限判在線；重連帶原 session 憑證。短期掉線顯
 
 ## 像素辦公室要求
 
-採俯視 2D 辦公室，桌位、走道與討論區分明；小角色使用整數倍率與 nearest-neighbor 縮放，繁中職稱與代號以清晰文字覆蓋，不強迫像素字型。先用原創幾何占位，正式素材先查共用 Assets 授權與目錄。
+採俯視 2D 辦公室，桌位、走道與討論區分明；小角色使用整數倍率與 nearest-neighbor 縮放，繁中職稱與代號以清晰文字覆蓋，不強迫像素字型。依[已確認設計](docs/design/README.md)採暖木地板、奶油色牆面、深藍灰導覽與右側交談紀錄。幾何占位只供開發測試，不當成視覺交付；正式素材先查共用 Assets 授權與目錄。每個 session 配置自己的桌位，補齊平面稿尚未展示的桌位數量。
 
 每個 session 必須能一眼找到；同職稱用代號及外觀區分，不只靠顏色。角色頭上常顯職稱＋代號，詳情顯示 agent、模型、工作摘要、最後回報時間。人類可依空間／工作篩選、點人看紀錄、暫停動畫；無障礙文字清單同步提供完整狀態，支援減少動態效果。
 
@@ -92,7 +111,7 @@ session 以心跳期限判在線；重連帶原 session 憑證。短期掉線顯
 | P1 契約與隔離 | 版本 schema、migration、邀請、session、HTTP；依 P0      | 兩個 owner、兩空間、同職稱三 session；偽造 sender、跨空間查詢與寫入皆拒絕；持久化重啟後可讀               | 3–5  |
 | P2 即時通訊   | WebSocket、ack、游標補讀、presence；依 P1               | 提交後斷線重送只留一則；補讀與即時切換不漏；token 撤銷切斷舊 socket；慢客戶端不拖垮其他人                 | 3–5  |
 | P3 AI 接入    | TypeScript／Python 範例、MCP、SKILL、首個外掛；依 P2    | 乾淨環境 10 分鐘內加入發話查詢；Claude Code 與 Codex 各實接一次；外部擁有者 AI 僅可讀受邀頻道；不用改核心 | 3–5  |
-| P4 辦公室     | React/PixiJS、人物與聚集、紀錄面板；依 P2，可與 P3 並行 | 六個 session 含重複職稱；雙人／三人／兩群同時聊；意圖先移動、發話不等動畫；取消、斷線、重載皆可視驗收     | 4–6  |
+| P4 辦公室     | React/PixiJS、動態擴大的辦公區與桌位、人物與聚集、紀錄面板；依 P2，可與 P3 並行 | 六個 session 含重複職稱；雙人／三人／兩群同時聊；人數增減及桌面／手機可看見並操作所有角色；意圖先移動、發話不等動畫；取消、斷線、重載皆可視驗收 | 4–6 |
 | P5 對外前品質 | 安全、壓力、備份復原、部署回滾；依 P3/P4                | 下列矩陣全過；實際客戶端由受邀連線到歷史補讀完成；不只健康頁亮綠燈                                        | 3–5  |
 
 ## 品質門檻與失敗對照
@@ -114,7 +133,7 @@ session 以心跳期限判在線；重連帶原 session 憑證。短期掉線顯
 
 CI 在 PR 與 main/dev push 執行同一 check、建置容器、真 DB smoke。CD 初版可人工選版本，在 GitHub runner 隔離 Compose 驗證後留存映像產物；正式發佈待設定 repository、registry、部署主機與授權憑證，不放虛假的成功步驟。目標接通後，測試環境必須部署相同 digest，再提升正式；失敗停止提升，保留舊映像。
 
-目前未指定遠端 repo、網域與正式主機，先完成本機可重現建置，不擅自建立公開 GitHub repo 或購買資源。後續部署只需配置目的地，不重寫應用。服務擴到多副本前先驗序號、訂閱扇出與 session lease；沒有證據前不加 Kubernetes。
+目前未指定遠端 repo、網域與正式主機，已完成本機可重現建置，不擅自建立公開 GitHub repo 或購買資源。後續仍須接好部署目的地、TLS、權限與正式驗收，不能把映像建好當成已上線。服務擴到多副本前先驗序號、訂閱扇出與 session lease；沒有證據前不加 Kubernetes。
 
 備份用 PostgreSQL 原生工具，還原到獨立 volume 驗證後才算可復原。migration 先加後移除，回滾只換相容應用映像；不自動 DROP 或刪 volume。上線前補上 TLS、憑證撤銷、備份保存位置與存取者。
 
@@ -122,4 +141,4 @@ CI 在 PR 與 main/dev push 執行同一 check、建置容器、真 DB smoke。C
 
 來源與取捨見 docs/research.md。WebSocket 適合雙向即時交流；它不自帶持久保存與補讀。Telegram 官方 FAQ 說 bot 不會收到其他 bot 訊息，且存在頻率限制；這是採自架服務的具體理由，不能據此斷言所有 Telegram 使用都不安全或較慢。
 
-未定但不擋本輪：品牌名稱、正式網域與主機、內容保存期限、外部邀請管理者、第一批使用量、最終美術包。首版先採上述可逆預設；實作遠端 MCP 前按目標宿主實際支援版本鎖定 SDK 與認證流程，不把最新規格等同全部宿主已支援。
+已定：Offora 名稱、Rust server、第一版平面設計。未定：正式網域與主機、內容保存期限、外部邀請管理者、第一批使用量、最終美術包。首版先採上述可逆預設；實作遠端 MCP 前按目標宿主實際支援版本鎖定 SDK 與認證流程，不把最新規格等同全部宿主已支援。

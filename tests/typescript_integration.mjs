@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const { OfforaClient, OfforaError } = require(process.env.OFFORA_TS_CLIENT)
+const base = process.env.OFFORA_TEST_URL
+const owner = JSON.parse(execFileSync('target/debug/offora', ['bootstrap'], { input: JSON.stringify({ owner_id: 'ts-owner', space_id: 'ts-space', channel_id: 'ts-channel', agent_id: 'ts-agent' }), encoding: 'utf8' })).owner_token
+
+async function post(path, body, token) {
+  const response = await fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) })
+  assert.equal(response.status, 201)
+  return response.json()
+}
+
+const invitation = await post('/api/v1/invitations', { space_id: 'ts-space', agent_id: 'ts-agent', channels: [{ channel_id: 'ts-channel', read: true, send: true, presence: true }], expires_in_seconds: 3600, max_uses: 1 }, owner)
+const agent = await post('/api/v1/invitations/redeem', { invitation_token: invitation.invitation_token })
+const first = await OfforaClient.join(base, 'ts-channel', agent.agent_token, { role: '工程師', code: 'TS01', model: '測試' })
+const second = await OfforaClient.join(base, 'ts-channel', agent.agent_token, { role: '工程師', code: 'TS02', model: '測試' })
+assert.equal((await first.listSessions()).sessions.length, 2)
+await first.start()
+assert.equal(first.reporting, true)
+await assert.rejects(async () => first.start())
+await first.updateSummary('正在交流')
+const conversation = await first.beginConversation('ts-conversation', [first.sessionId, second.sessionId], '交換訊息', 300)
+const sent = await first.send('ts-message', '第一則訊息', { conversation_id: conversation.conversation_id, work_ref: 'work-1' })
+assert.equal((await first.send('ts-message', '第一則訊息', { conversation_id: conversation.conversation_id, work_ref: 'work-1' })).message_id, sent.message_id)
+await assert.rejects(() => first.send('ts-message', '不同訊息'), error => error instanceof OfforaError && error.status === 409)
+await second.send('ts-reply', '已收到', { conversation_id: conversation.conversation_id, reply_to: sent.message_id })
+assert.equal((await second.read({ conversation_id: conversation.conversation_id })).messages.length, 2)
+assert.equal((await second.read({ work_ref: 'work-1' })).messages[0].message_id, sent.message_id)
+assert.equal((await second.readSince(0)).messages.length, 2)
+assert.equal((await first.listConversations()).conversations.length, 1)
+await first.endConversation(conversation.conversation_id)
+assert.equal((await first.listConversations('ended')).conversations.length, 1)
+await new Promise(resolve => setTimeout(resolve, 16000))
+assert.equal((await second.listSessions()).sessions.find(item => item.session_id === first.sessionId).heartbeat_seq, 2)
+await first.stop()
+const resumed = new OfforaClient(base, 'ts-channel', first.sessionId, first.sessionToken)
+await resumed.start()
+assert.equal((await second.listSessions()).sessions.find(item => item.session_id === first.sessionId).heartbeat_seq, 3)
+await resumed.heartbeat(100)
+await new Promise(resolve => setTimeout(resolve, 16000))
+assert.equal(resumed.reporting, false)
+assert.throws(() => resumed.check(), /在線回報已停止/)
+await assert.rejects(() => resumed.stop(), /在線回報已停止/)
+const readonlyInvite = await post('/api/v1/invitations', { space_id: 'ts-space', agent_id: 'ts-agent', channels: [{ channel_id: 'ts-channel', read: true, send: false, presence: false }], expires_in_seconds: 3600, max_uses: 1 }, owner)
+const readonlyAgent = await post('/api/v1/invitations/redeem', { invitation_token: readonlyInvite.invitation_token })
+const reader = await OfforaClient.join(base, 'ts-channel', readonlyAgent.agent_token, { role: '觀察者', code: 'TS03', model: '測試' })
+await reader.start()
+assert.equal(reader.reporting, false)
+assert.equal((await reader.read()).messages.length, 2)
+await assert.rejects(() => reader.send('read-only', '無權發話'), error => error instanceof OfforaError && error.status === 403)
+await reader.stop()
+await first.leave()
+await assert.rejects(() => first.read(), error => error instanceof OfforaError && error.status === 401)
+console.log('TypeScript 加入、交談、重送、查詢及離開通過')

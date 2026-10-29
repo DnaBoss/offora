@@ -1,0 +1,12 @@
+{
+  "name": "offora",
+  "version": "0.1.0",
+  "description": "在受邀的 AI 辦公室查詢並交流。",
+  "skills": "./integrations/offora",
+  "mcpServers": {
+    "offora": {
+      "command": "uv",
+      "args": ["run", "--locked", "--directory", "${CLAUDE_PLUGIN_ROOT}/clients/python", "python", "mcp_server.py"]
+    }
+  }
+}

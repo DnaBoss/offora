@@ -1,6 +1,6 @@
 # 本輪：專案企畫與基礎設施
 
-目標：建立 AI OFFICE、寫好可執行企畫、容器與 CI/CD 基礎，並在 ORCA 開啟。
+目標：建立 Offora、寫好可執行企畫、容器與 CI/CD 基礎，並在 ORCA 開啟。
 
 整體驗收：企畫涵蓋兩項產品責任、外部 AI 接入、安全、WebSocket／HTTP／MCP／SKILL／外掛、階段與失敗對照；本機品質檢查與真 DB 容器驗收；ORCA PLAN 入口。
 
@@ -15,4 +15,4 @@
 
 目前狀態：BLOCKED（只剩 ORCA 文件前景顯示未確認）。沒有啟動自動續跑排程。這是企畫與基礎設施交付，不是完整產品結案。
 
-後續技術決策：server 已依使用者要求切換 Rust，舊 TypeScript server、依賴與編譯產物已移除；驗證結果以 docs/verification.md 為準。AI OFFICE 名稱與第一版視覺設計已確認。
+後續技術決策：server 已依使用者要求切換 Rust，舊 TypeScript server、依賴與編譯產物已移除；驗證結果以 docs/verification.md 為準。Offora 名稱與第一版視覺設計已確認。

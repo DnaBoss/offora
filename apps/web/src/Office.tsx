@@ -1,0 +1,250 @@
+import { useEffect, useRef, useState } from 'react'
+import { Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Texture, TilingSprite } from 'pixi.js'
+import type { Conversation, Member } from './types'
+
+function shorten(value: string, limit: number) {
+  const characters = Array.from(value)
+  if (characters.length <= limit) return value
+  const first = Math.ceil((limit - 1) / 2)
+  const last = Math.floor((limit - 1) / 2)
+  return `${characters.slice(0, first).join('')}…${characters.slice(-last).join('')}`
+}
+
+function groupLayout(width: number, conversations: Conversation[]) {
+  const columns = width >= 700 ? 2 : 1
+  const groupWidth = columns === 1 ? width : width * 0.46
+  const perRow = Math.max(1, Math.floor(groupWidth / 160))
+  const largest = Math.max(1, ...conversations.map(item => item.participants.length))
+  return { columns, perRow, stride: 255 + (Math.ceil(largest / perRow) - 1) * 190 }
+}
+
+export default function Office({ members, conversations, speaking, speech, onSelect, onSelectConversation, pauseMotion }: { members: Member[], conversations: Conversation[], speaking: string[], speech: Record<string, string>, onSelect: (id: string) => void, onSelectConversation: (id: string) => void, pauseMotion: boolean }) {
+  const root = useRef<HTMLDivElement>(null)
+  const [loadError, setLoadError] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const [columns, setColumns] = useState(1)
+  const [seatCount, setSeatCount] = useState(0)
+  const [stageWidth, setStageWidth] = useState(0)
+  const positions = useRef(new Map<string, { x: number, y: number }>())
+  const seats = useRef(new Map<string, number>())
+  const appearances = useRef(new Map<string, number>())
+  const discussionSlots = useRef(new Map<string, number>())
+  useEffect(() => {
+    const element = root.current
+    if (!element) return
+    const observer = new ResizeObserver(entries => {
+      const width = entries[0].contentRect.width
+      setColumns(Math.max(1, Math.floor(width / 160)))
+      setStageWidth(width)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  useEffect(() => {
+    const element = root.current
+    if (!element) return
+    const office = element.closest('.office') as HTMLElement | null
+    const canvas = element.parentElement
+    if (!office || !canvas) return
+    let active = true
+    let initialized = false
+    let stageObserver: ResizeObserver | undefined
+    let sceneTextures: Texture[] = []
+    let motionPreference: MediaQueryList | undefined
+    let motionChanged: (() => void) | undefined
+    let viewportChanged: (() => void) | undefined
+    let scrollChanged: (() => void) | undefined
+    let canvasObserver: ResizeObserver | undefined
+    const app = new Application()
+    void (async () => {
+      element.style.height = `${office.clientHeight}px`
+      await app.init({ backgroundAlpha: 0, resizeTo: element, antialias: false, resolution: window.devicePixelRatio || 1, autoDensity: true })
+      if (!active) { app.destroy(true); return }
+      initialized = true
+      const textures = await Promise.all(['/assets/worker-v1.png', '/assets/worker-v2.png', '/assets/worker-v3.png', '/assets/worker-v4.png', '/assets/worker-v5.png', '/assets/worker-v6.png'].map(path => Assets.load(path)))
+      const background = await Assets.load('/assets/office-background-v1.png')
+      if (!active) return
+      const deskTexture = new Texture({ source: background.source, frame: new Rectangle(932, 660, 205, 220) })
+      const floorTexture = new Texture({ source: background.source, frame: new Rectangle(770, 280, 200, 200) })
+      sceneTextures = [deskTexture, floorTexture]
+      motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
+      setLoadError(false)
+      element.appendChild(app.canvas)
+      const redraw = () => {
+        app.stage.removeChildren()
+        app.ticker.stop()
+        app.ticker.remove(animate)
+        const width = app.screen.width
+        const height = canvas.clientHeight
+        app.stage.y = -office.scrollTop
+        const columns = Math.max(1, Math.floor(width / 160))
+        const layout = groupLayout(width, conversations)
+        const groupColumns = layout.columns
+        const speakers = members.filter(member => member.presence !== 'offline' && speaking.includes(member.session_id) && !conversations.some(item => item.participants.includes(member.session_id)))
+        const speakersPerRow = Math.max(1, Math.floor(width / 160))
+        const groupX = (slot: number) => width * (groupColumns === 1 ? 0.5 : slot % 2 === 0 ? 0.27 : 0.73)
+        const moves: { id: string, person: Container, from: { x: number, y: number }, to: { x: number, y: number } }[] = []
+        const reducedMotion = pauseMotion || motionPreference?.matches === true
+        const currentIds = new Set(conversations.map(item => item.conversation_id))
+        for (const id of discussionSlots.current.keys()) if (!currentIds.has(id)) discussionSlots.current.delete(id)
+        for (const [id, slot] of discussionSlots.current) if (slot >= conversations.length) discussionSlots.current.delete(id)
+        for (const item of conversations) {
+          if (discussionSlots.current.has(item.conversation_id)) continue
+          const used = new Set(discussionSlots.current.values())
+          let slot = 0
+          while (used.has(slot)) slot++
+          discussionSlots.current.set(item.conversation_id, slot)
+        }
+        const memberIds = new Set(members.map(member => member.session_id))
+        for (const id of seats.current.keys()) if (!memberIds.has(id)) { seats.current.delete(id); positions.current.delete(id); appearances.current.delete(id) }
+        for (const member of members) {
+          if (!appearances.current.has(member.session_id)) {
+            const counts = textures.map((_, index) => [...appearances.current.values()].filter(value => value === index).length)
+            appearances.current.set(member.session_id, counts.indexOf(Math.min(...counts)))
+          }
+          if (seats.current.has(member.session_id)) continue
+          const used = new Set(seats.current.values())
+          let seat = 0
+          while (used.has(seat)) seat++
+          seats.current.set(member.session_id, seat)
+        }
+        const shortNames = new Map(members.map(member => [member.session_id, `${shorten(member.role, 6)} ${shorten(member.code, 10)}`]))
+        const nameCounts = new Map<string, number>()
+        for (const name of shortNames.values()) nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1)
+        const displayName = (member: Member, index: number) => {
+          const name = shortNames.get(member.session_id) ?? ''
+          return (nameCounts.get(name) ?? 0) > 1 ? `${name} ·${index + 1}` : name
+        }
+        const totalSeats = Math.max(0, ...[...seats.current.values()].map(value => value + 1))
+        setSeatCount(previous => previous === totalSeats ? previous : totalSeats)
+        const seatRows = Math.ceil(totalSeats / columns)
+        if (seatRows) {
+          const floor = new TilingSprite({ texture: floorTexture, width, height: seatRows * 190 })
+          floor.y = height - seatRows * 190 - 10
+          app.stage.addChild(floor)
+        }
+        for (const member of members) {
+          const index = seats.current.get(member.session_id) ?? 0
+          const x = (index % columns + 0.5) * width / columns
+          const y = height - 100 - (seatRows - 1 - Math.floor(index / columns)) * 190
+          const desk = new Container({ x, y, eventMode: 'static', cursor: 'pointer' })
+          const deskImage = new Sprite(deskTexture)
+          deskImage.anchor.set(0.5)
+          deskImage.y = -53
+          deskImage.width = 130
+          deskImage.height = 140
+          desk.addChild(deskImage)
+          const away = member.presence !== 'offline' && (speaking.includes(member.session_id) || conversations.some(item => item.participants.includes(member.session_id)))
+          if (away) {
+            const name = new Text({ text: displayName(member, index), style: { fontFamily: 'sans-serif', fontSize: 12, fontWeight: 'bold', fill: '#fff8e6', stroke: { color: '#754623', width: 3 } } })
+            name.anchor.set(0.5)
+            if (name.width > 120) name.scale.set(120 / name.width)
+            name.y = -59
+            desk.addChild(name)
+          }
+          desk.on('pointertap', () => onSelect(member.session_id))
+          app.stage.addChild(desk)
+        }
+        members.forEach(member => {
+          const index = seats.current.get(member.session_id) ?? 0
+          const col = index % columns
+          const row = Math.floor(index / columns)
+          const discussionIndex = member.presence === "offline" ? -1 : conversations.findIndex(item => item.participants.includes(member.session_id))
+          const discussion = conversations[discussionIndex]
+          const isSpeaking = !discussion && member.presence !== 'offline' && speaking.includes(member.session_id)
+          const slot = discussion ? discussionSlots.current.get(discussion.conversation_id) ?? 0 : 0
+          const discussionCount = conversations.filter(item => item.participants.includes(member.session_id)).length
+          const participantIndex = discussion ? discussion.participants.indexOf(member.session_id) : 0
+          const participantRow = Math.floor(participantIndex / layout.perRow)
+          const rowCount = discussion ? Math.min(layout.perRow, discussion.participants.length - participantRow * layout.perRow) : 1
+          const speakerIndex = speakers.findIndex(item => item.session_id === member.session_id)
+          const speakerRow = Math.floor(speakerIndex / speakersPerRow)
+          const speakersInRow = Math.min(speakersPerRow, speakers.length - speakerRow * speakersPerRow)
+          const x = discussion ? Math.max(75, Math.min(width - 75, groupX(slot) + (participantIndex % layout.perRow - (rowCount - 1) / 2) * 160)) : isSpeaking ? width * 0.5 + (speakerIndex % speakersPerRow - (speakersInRow - 1) / 2) * 160 : (col + 0.5) * width / columns
+          const y = discussion ? 205 + Math.floor(slot / groupColumns) * layout.stride + participantRow * 190 : isSpeaking ? 150 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRow * 190 : height - 100 - (seatRows - 1 - row) * 190
+          const previous = positions.current.get(member.session_id) ?? { x, y }
+          const person = new Container({ x: previous.x, y: previous.y, eventMode: 'static', cursor: 'pointer' })
+          const sprite = new Sprite(textures[appearances.current.get(member.session_id) ?? 0])
+          sprite.anchor.set(0.5)
+          sprite.width = 130
+          sprite.height = 130
+          sprite.alpha = member.presence === 'offline' ? 0.45 : 1
+          person.addChild(sprite)
+          const activity = discussionCount > 1 ? `（${discussionCount} 場）` : isSpeaking ? '（剛發話）' : ''
+          const presence = member.presence === 'offline' ? '（離線）' : member.presence === 'reconnecting' ? '（重連中）' : ''
+          const label = new Text({ text: displayName(member, index), style: { fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold', fill: '#193241', stroke: { color: '#fff8e6', width: 4 } } })
+          label.anchor.set(0.5, 0)
+          if (label.width > 145) label.scale.set(145 / label.width)
+          label.y = 47
+          person.addChild(label)
+          if (activity || presence) {
+            const status = new Text({ text: `${activity}${presence}`, style: { fontFamily: 'sans-serif', fontSize: 11, fontWeight: 'bold', fill: '#193241', stroke: { color: '#fff8e6', width: 4 } } })
+            status.anchor.set(0.5, 0)
+            if (status.width > 145) status.scale.set(145 / status.width)
+            status.y = 62
+            person.addChild(status)
+          }
+          const message = speech[member.session_id]
+          if (message && member.presence !== 'offline') {
+            const characters = Array.from(message.trim().replace(/\s+/g, ' '))
+            const excerpt = characters.slice(0, 22).join('') + (characters.length > 22 ? '…' : '')
+            const bubbleText = new Text({ text: excerpt, style: { fontFamily: 'sans-serif', fontSize: 12, fill: '#193241', wordWrap: true, wordWrapWidth: 130, breakWords: true } })
+            bubbleText.anchor.set(0.5)
+            bubbleText.y = -87
+            person.addChild(new Graphics().roundRect(-73, -106, 146, 38, 8).fill({ color: 0xffffff }).stroke({ color: 0x866b49, width: 1 }))
+            person.addChild(bubbleText)
+          }
+          person.on('pointertap', () => onSelect(member.session_id))
+          app.stage.addChild(person)
+          moves.push({ id: member.session_id, person, from: previous, to: { x, y } })
+        })
+        const shortTitles = new Map(conversations.map(item => [item.conversation_id, shorten(item.summary, 10)]))
+        const titleCounts = new Map<string, number>()
+        for (const title of shortTitles.values()) titleCounts.set(title, (titleCounts.get(title) ?? 0) + 1)
+        for (const discussion of conversations) {
+          const slot = discussionSlots.current.get(discussion.conversation_id) ?? 0
+          const shortTitle = shortTitles.get(discussion.conversation_id) ?? ''
+          const displayTitle = (titleCounts.get(shortTitle) ?? 0) > 1 ? `${shortTitle} ·${slot + 1}` : shortTitle
+          const badge = new Container({ x: groupX(slot), y: 50 + Math.floor(slot / groupColumns) * layout.stride, eventMode: 'static', cursor: 'pointer' })
+          badge.addChild(new Graphics().roundRect(-75, -16, 150, 32, 6).fill({ color: 0xfff8e6 }).stroke({ color: 0x866b49, width: 1 }))
+          const title = new Text({ text: displayTitle, style: { fontFamily: 'sans-serif', fontSize: 13, fill: '#193241' } })
+          title.anchor.set(0.5)
+          if (title.width > 138) title.scale.set(138 / title.width)
+          badge.addChild(title)
+          badge.on('pointertap', () => onSelectConversation(discussion.conversation_id))
+          app.stage.addChild(badge)
+        }
+        const started = performance.now()
+        animate = () => {
+          const progress = reducedMotion ? 1 : Math.min((performance.now() - started) / 800, 1)
+          for (const move of moves) {
+            move.person.x = move.from.x + (move.to.x - move.from.x) * progress
+            move.person.y = move.from.y + (move.to.y - move.from.y) * progress
+            positions.current.set(move.id, { x: move.person.x, y: move.person.y })
+          }
+          if (progress === 1) app.ticker.remove(animate)
+        }
+        animate()
+        app.ticker.add(animate)
+        app.ticker.start()
+      }
+      let animate = () => {}
+      redraw()
+      app.renderer.on('resize', redraw)
+      motionChanged = redraw
+      motionPreference.addEventListener('change', motionChanged)
+      viewportChanged = () => { element.style.height = `${office.clientHeight}px`; app.resize() }
+      scrollChanged = () => { app.stage.y = -office.scrollTop }
+      office.addEventListener('scroll', scrollChanged, { passive: true })
+      stageObserver = new ResizeObserver(viewportChanged)
+      stageObserver.observe(office)
+      canvasObserver = new ResizeObserver(redraw)
+      canvasObserver.observe(canvas)
+    })().catch(() => { if (active) setLoadError(true) })
+    return () => { active = false; stageObserver?.disconnect(); canvasObserver?.disconnect(); if (scrollChanged) office.removeEventListener('scroll', scrollChanged); if (motionChanged) motionPreference?.removeEventListener('change', motionChanged); if (initialized) app.destroy(true); for (const texture of sceneTextures) texture.destroy(false); sceneTextures = [] }
+  }, [members, conversations, speaking, speech, onSelect, onSelectConversation, pauseMotion, attempt])
+  const layout = groupLayout(stageWidth, conversations)
+  const speakerCount = members.filter(member => member.presence !== 'offline' && speaking.includes(member.session_id) && !conversations.some(item => item.participants.includes(member.session_id))).length
+  const speakerRows = Math.ceil(speakerCount / Math.max(1, Math.floor(stageWidth / 160)))
+  return <div className="office-canvas" style={{ minHeight: Math.max(440, 280 + Math.ceil(conversations.length / layout.columns) * layout.stride + speakerRows * 190 + Math.ceil(Math.max(members.length, seatCount) / columns) * 190) }}><div className="office-stage" ref={root} aria-hidden="true" />{loadError && <div className="office-error" role="alert"><span>辦公室畫面載入失敗</span><button onClick={() => { setLoadError(false); setAttempt(value => value + 1) }}>重新載入畫面</button></div>}</div>
+}

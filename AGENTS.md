@@ -1,4 +1,4 @@
-# AI OFFICE 專案規則
+# Offora 專案規則
 
 沿用 /home/cash/.codex/AGENTS.md。唯一現行主計畫是 PLAN.md；依 README.md 索引按需讀取。
 
@@ -10,3 +10,5 @@
 - 程式不加註解。設定集中、SQL 參數化、錯誤結構化記錄，不記 token 與完整訊息內容。
 - 修改在 feature branch；提交前 bash scripts/check.sh；容器變更另跑 bash scripts/smoke.sh。不得把文件或健康檢查當產品驗收。
 - 不建立外部 repo、推送套件或公開服務，除非另有明確授權。部署沿用使用者授權，但必須先有目標與通過的測試環境。
+
+- Rust 函式庫入口以套件名稱命名，例如 src/offora.rs，並在 Cargo.toml 的 [lib] path 指定；不使用 lib.rs。此命名慣例與 edition 無關，目前使用 edition 2024。

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "task": "offora-product",
+  "project": "/home/cash/work_space/private/offora",
+  "steps": {
+    "P0": {"kind": "internal", "reason": "核對既有基礎與工作所有權，為後續產品交付做準備"},
+    "P1": {"kind": "stage"},
+    "P2": {"kind": "stage"},
+    "P3": {"kind": "stage"},
+    "P4": {"kind": "stage"},
+    "P5": {"kind": "milestone"}
+  }
+}

@@ -19,9 +19,9 @@ jobs:
       - run: bash scripts/smoke.sh
         env:
           APP_VERSION: ${{ github.sha }}
-      - run: docker save "pixel-office:$GITHUB_SHA" | gzip > pixel-office.tar.gz
+      - run: docker save "offora:$GITHUB_SHA" | gzip > offora.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: verified-image-${{ github.sha }}
-          path: pixel-office.tar.gz
+          path: offora.tar.gz
           retention-days: 7

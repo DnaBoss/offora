@@ -1,0 +1,8 @@
+[project]
+name = "offora-mcp"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.28,<2",
+    "websockets>=15,<16",
+]

@@ -23,4 +23,19 @@
 
 ## 留存與影響
 
-舊 server 原始碼僅存在 Git 歷史，工作目錄沒有備份副本或雙套入口。舊驗收日誌屬證據，未當現行結果使用；資料庫 volume 沒有刪除。測試只啟停 pixel-office-smoke 自有容器，結束正常停止。既有資料夾及 Compose 專案名稱沿用，以保留 ORCA 連結與 DB volume；產品與 Rust 執行檔名稱是 AI OFFICE／ai-office。
+舊 server 原始碼僅存在 Git 歷史，工作目錄沒有備份副本或雙套入口。舊驗收日誌屬證據，未當現行結果使用；資料庫 volume 沒有刪除。測試只啟停 pixel-office-smoke 自有容器，結束正常停止。當時保留既有資料夾及 Compose 專案名稱，以保留 ORCA 連結與 DB volume；產品與 Rust 執行檔名稱現改為 Offora／offora；以上舊驗收原件保留當時名稱。
+
+## Offora 改名驗證（2026-10-29）
+
+- 文件、Rust 套件、服務回傳名稱、容器執行檔與 CI/CD 映像名稱統一為 Offora／offora。保留既有工作區路徑、Compose 專案識別與資料庫 volume；設計原圖及歷史驗收原件不改寫。
+- bash scripts/check.sh 通過：格式、靜態檢查、2 項測試，0 略過。原件 artifacts/offora-rename-check.log。
+- bash scripts/smoke.sh 通過：實際容器回傳 offora、資料庫正常／中斷／恢復及未實作訊息端點檢查。原件 artifacts/offora-rename-smoke.log。
+- shell 語法與 git diff --check 通過。未執行遠端 CI、正式部署或瀏覽器畫面驗收；尚無可操作畫面。名稱未做商標查重。
+
+## 函式庫入口命名
+
+src/lib.rs 已改為 src/offora.rs，由 Cargo.toml 的 [lib] path 指定，edition 維持 2024。格式、靜態檢查及 2 項測試通過，0 略過；原件 artifacts/offora-entry-check.log。Cargo metadata 確認新入口。檔名調整後未重跑容器驗收；前節容器結果屬檔案搬移前。未修改正式環境。
+
+## 工作區更名
+
+實際資料夾已改為 offora，舊路徑是相容連結；Orca 專案顯示名稱已改為 Offora，但登記路徑仍為舊路徑，從新實際路徑以 active 自動查找工作區尚未成功。搬移後 bash scripts/check.sh 通過，2 項測試、0 略過。未重跑容器或畫面驗收，正式環境未變。

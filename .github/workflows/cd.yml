@@ -4,7 +4,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: pixel-office-release
+  group: offora-release
   cancel-in-progress: false
 jobs:
   verify:
@@ -17,12 +17,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: verified-image-${{ github.sha }}
-      - run: docker load --input pixel-office.tar.gz
-      - run: docker image inspect "pixel-office:$GITHUB_SHA" --format '{{.Id}}' > image-id.txt
+      - run: docker load --input offora.tar.gz
+      - run: docker image inspect "offora:$GITHUB_SHA" --format '{{.Id}}' > image-id.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: pixel-office-${{ github.sha }}
+          name: offora-${{ github.sha }}
           path: |
-            pixel-office.tar.gz
+            offora.tar.gz
             image-id.txt
           retention-days: 7

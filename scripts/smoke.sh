@@ -8,18 +8,28 @@ flock -n 9 || { echo '另一個基礎設施驗收正在執行'; exit 1; }
 trap 'docker compose stop' EXIT
 docker compose up --build --wait
 python3 - <<'PYTEST'
-import json,os,urllib.request,urllib.error
+import json,os,re,urllib.request,urllib.error
 base='http://127.0.0.1:18781'
 assert urllib.request.urlopen(base+'/health/ready', timeout=5).status == 200
 v=json.load(urllib.request.urlopen(base+'/version', timeout=5))
 assert v['version'] == os.environ['APP_VERSION']
-assert v['service'] == 'ai-office'
+assert v['service'] == 'offora'
 assert v['stage'] == 'infrastructure'
+page=urllib.request.urlopen(base+'/', timeout=5)
+assert page.status == 200 and 'text/html' in page.headers['Content-Type']
+html=page.read().decode()
+script=re.search(r'<script[^>]+src="([^"]+)"', html)
+assert script and urllib.request.urlopen(base+script.group(1), timeout=5).status == 200
 try:
- urllib.request.urlopen(base+'/api/v1/messages', timeout=5)
- raise AssertionError('Unexpected messages endpoint')
+ urllib.request.urlopen(base+'/assets/nonexistent-offora-test.js', timeout=5)
+ raise AssertionError('Missing asset unexpectedly succeeded')
 except urllib.error.HTTPError as e:
  assert e.code == 404
+try:
+ urllib.request.urlopen(base+'/api/v1/messages', timeout=5)
+ raise AssertionError('Unexpected messages read endpoint')
+except urllib.error.HTTPError as e:
+ assert e.code == 401
 PYTEST
 docker compose stop db
 python3 - <<'PYTEST'
