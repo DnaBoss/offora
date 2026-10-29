@@ -13,6 +13,7 @@ else:
     key, joined = auto.auto_join(base_url)
     client = OfforaClient(base_url, joined['channel_id'], joined['session_id'], joined['session_token'])
     WATCH_URL = auto.watch_url(base_url, key)
+    auto.open_once(WATCH_URL, key)
 
 
 @server.tool(description='查看接入設定中的本人角色識別碼和頻道；建立交談時參與者須包含本人角色識別碼。', annotations=ToolAnnotations(readOnlyHint=True))

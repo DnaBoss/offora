@@ -4,6 +4,7 @@ import os
 import re
 import secrets
 import subprocess
+import webbrowser
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -85,3 +86,12 @@ def auto_join(base_url):
 
 def watch_url(base_url, key):
     return f'{base_url}/#office={key}'
+
+
+def open_once(url, key):
+    marker = Path.home() / '.offora' / ('opened-' + hashlib.sha256(key.encode()).hexdigest()[:16])
+    if marker.exists() or os.environ.get('OFFORA_NO_BROWSER'):
+        return
+    marker.parent.mkdir(mode=0o700, exist_ok=True)
+    marker.touch()
+    webbrowser.open(url)
