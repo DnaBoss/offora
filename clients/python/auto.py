@@ -2,6 +2,9 @@ import hashlib
 import json
 import os
 import secrets
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import webbrowser
 import urllib.error
 import urllib.request
@@ -75,3 +78,41 @@ def open_once(url, key):
     marker.parent.mkdir(mode=0o700, exist_ok=True)
     marker.touch()
     webbrowser.open(url)
+
+
+BRIDGE_PORT = 47820
+
+
+def serve_bridge(base_url, key):
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != '/office':
+                self.send_error(404)
+                return
+            body = json.dumps({'office_key': key}).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', base_url)
+            self.send_header('Access-Control-Allow-Private-Network', 'true')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_OPTIONS(self):
+            self.send_response(204)
+            self.send_header('Access-Control-Allow-Origin', base_url)
+            self.send_header('Access-Control-Allow-Private-Network', 'true')
+            self.send_header('Access-Control-Allow-Methods', 'GET')
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    def run():
+        while True:
+            try:
+                ThreadingHTTPServer(('127.0.0.1', BRIDGE_PORT), Handler).serve_forever()
+            except OSError:
+                time.sleep(10)
+
+    threading.Thread(target=run, daemon=True).start()
