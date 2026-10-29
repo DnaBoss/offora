@@ -1,0 +1,12 @@
+{
+  "date": "2026-10-29",
+  "tool": "built-in image_gen",
+  "original": "/home/cash/.codex/generated_images/01a1857d-03c8-7383-b3aa-6641cd63b49a/exec-5eeb995e-dce2-4807-b959-105475a5bfea.png",
+  "source": "/home/cash/Assets/sources/pixel-office/design-v1/office-main-v1.png",
+  "project_copy": "/home/cash/work_space/private/pixel-office/docs/design/office-main-v1.png",
+  "sha256": "bb2d402f1c3bf7304be999745f16a9345119c8f1492f228a05b52797bdfbf542",
+  "kind": "static UI mockup",
+  "live_product": false,
+  "reference_assets_embedded": false,
+  "verification": "已目視六位角色、職稱代號、兩組交談、移動虛線、訊息內容；未做互動或真實連線驗收"
+}

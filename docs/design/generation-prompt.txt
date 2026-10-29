@@ -1,0 +1,23 @@
+Create ONE polished high-fidelity flat desktop application UI design mockup for "PIXEL OFFICE", an AI collaboration communications platform with an original 2D pixel-art virtual office. This is a finished product screen, not a poster, not a device photo, no perspective browser frame. Wide landscape approximately 1800x1100, all panel text readable, professional deliberate spacing. Traditional Chinese UI, exact concise strings below. The office is an AI message visualization only, NO task boards, approval buttons, progress percentages, model execution controls or code editors. Small top-right chip "設計示意".
+
+Visual direction: cozy sophisticated 16-bit office, truly pixelated art with visible sharp stepped edges, warm honey oak floors, cream walls, large daylight windows, sage plants, terracotta details, sage and muted lavender rugs, monitors, keyboards, two tiny bookcases, coffee corner. Original composition, do not copy any competitor layout or assets. Straight top-down 2D game view with slightly visible front faces of furniture, not isometric 3D. UI shell is deep ink navy #202C35, cream #F7F5EE panels, green #4B8570 highlights. Beautiful polished and restrained. Text is crisp modern Traditional Chinese sans-serif, NOT pixel glyphs. Distinguish product UI from pixel world.
+
+Layout: Top bar 64px full width with tiny geometric pixel logo, "PIXEL OFFICE", selected space "網站協作室", right small connection dot "已連線", and outlined "邀請 AI" plus "設計示意".
+Left sidebar about 200px: title "協作空間", active "網站協作室", secondary "設計討論室"; divider; heading "工作參照", active "全部", "登入頁", "品牌視覺"; divider; compact roster heading "在線成員 6" with six rows "後端 B01", "前端 F01", "前端 F02", "美術 A01", "美術 A02", "後端 B02". Small colored avatar icons and text status; no task completion indicators. Bottom gear "空間設定".
+Center about 1050px: toolbar "辦公室" with inactive "成員清單"; right counters "6 位在線" and "2 組交談". Below, huge generous pixel office map with all SIX unique avatars. Readable name badges floating directly above each character:
+1. "後端 B01", blue shirt, central-left discussion rug.
+2. "前端 F01", green shirt, central-left discussion rug.
+3. "前端 F02", yellow shirt, approaching same rug from desk along a short clearly visible dashed route with tiny arrow. F02 small amber "前往交談" tag. First two already talking inside soft mint dashed outline with selected group label "登入欄位 · 3 人". This group has a single elegant speech bubble "欄位名稱一起確認一下？".
+4. "美術 A01", terracotta shirt, right rear lavender lounge rug.
+5. "美術 A02", purple shirt, same lavender lounge, two distinct name badges, a lavender group boundary, label "品牌配色 · 2 人", tiny bubble "這版配色比較清楚".
+6. "後端 B02", dark teal shirt, seated working alone at a lower-left desk and monitor, badge "後端 B02", short status "整理 API 文件".
+Exactly one avatar per session, no duplicate avatars seated at empty desks. At least 6 workstations, only B02 occupied, the other desks visibly empty while avatars converse. Plants and furnishings decorate without overwhelming readable grouping. Enough negative space around labels so none overlap. Do not hide labels behind furniture. One tiny lower-right map control "- 100% +" and "暫停動態".
+Under map a restrained status legend "● 工作中   ● 交談中   ● 前往交談", and tiny low emphasis note "狀態由 AI 回報". Bottom activity strip with timestamps "10:42  F02 準備加入交談" and "10:41  B02 更新工作摘要", no fabricated completion.
+
+Right panel about 390px cream background: top heading "交談紀錄"; selected conversation title "登入欄位", subtitle "B01 · F01 · F02", small "3 人參與". Filter/search field "搜尋這段交談". Three spacious readable message cards with avatar squares, speaker+timestamp, concise Traditional Chinese text:
+"後端 B01" "10:41" / "登入 API 欄位已整理，請確認命名。"
+"前端 F01" "10:42" / "我正在接表單，想確認錯誤格式。"
+"前端 F02" "10:42" / "我處理驗證提示，一起確認。"
+A small muted event row "F02 正前往討論區".
+Bottom link style "查看完整紀錄 ↗". Separate compact info card heading "目前參照" body "登入頁" and small "模型：Claude · GPT · Qwen". Right panel is READ ONLY observation: no chat input and no send button. No long paragraphs.
+Overall finish: a production-quality original screen, balanced detailed pixel environment and calm modern UI. No gradients except subtle daylight; no huge empty card grid; no photo people; no copyright logos; no micro illegible gibberish. Prioritize correct Chinese role badges and evident AI collaboration with two groups and one walking character.

@@ -1,6 +1,6 @@
-# Pixel Office：AI 協作辦公室執行企畫
+# AI OFFICE：AI 協作辦公室執行企畫
 
-2026-10-29。暫定專案名 Pixel Office。本輪建立企畫與可執行的基礎設施；以下產品能力是開發計畫，不表示已實作。現況與測試結果見 docs/verification.md。
+2026-10-29。專案名稱已由使用者確認為 AI OFFICE。本輪建立企畫與可執行的基礎設施；以下產品能力是開發計畫，不表示已實作。現況與測試結果見 docs/verification.md。
 
 ## 產品與完成邊界
 
@@ -33,13 +33,15 @@ B01 準備找 F01、F02 討論時，先送交談意圖及參與者。畫面立�
 
 ## 技術棧與程式分工
 
+使用者已指定 server 用 Rust；前端與 SDK 可使用 TypeScript／Python，透過版本化 JSON 契約互通。既有 TypeScript server 已由 Rust 取代，不保留雙套入口。
+
 | 層       | 選擇                                                         | 邊界與替代方案                                                               |
 | -------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- |
 | 人類介面 | React 19、TypeScript strict、Vite；PixiJS 8 畫像素場景       | React 做訊息與操作面板，PixiJS 做角色、地圖與移動；不用完整遊戲引擎          |
-| 服務     | Node.js 22 LTS、Fastify 5、官方 WebSocket 整合               | HTTP 與 socket 都呼叫同一服務層，不在連線處直接寫 SQL；實際套件鎖在 lockfile |
-| 資料     | PostgreSQL 17、pg；版本化 SQL migration                      | 同一交易保存訊息與可補讀事件；初期單服務，不加 Redis 或訊息佇列              |
+| 服務     | Rust 1.98、Axum 0.8、Tokio；WebSocket 使用 Axum               | HTTP 與 socket 都呼叫同一服務層，不在連線處直接寫 SQL；Rust 依賴鎖在 Cargo.lock |
+| 資料     | PostgreSQL 17、SQLx 0.8；版本化 SQL migration                      | 同一交易保存訊息與可補讀事件；初期單服務，不加 Redis 或訊息佇列              |
 | 契約     | JSON Schema、OpenAPI 3.1、具版本號的事件                     | 驗證輸入與產生型別共用來源；新版本不可默默改舊欄位語意                       |
-| 驗證     | Node test runner／Vitest、Playwright、真 PostgreSQL 整合測試 | 圖片測試另驗真訊息、斷線與權限，不只看畫面好看                               |
+| 驗證     | cargo test、前端 Vitest／Playwright、真 PostgreSQL 整合測試 | 圖片測試另驗真訊息、斷線與權限，不只看畫面好看                               |
 | 交付     | Docker 多階段建置、Compose、GitHub Actions                   | 本機與 CI 共用 check；映像以 commit 標識，不用 latest 決定回滾               |
 
 參考 private/agent-pool-gateway/web/package.json 的 React／TypeScript／Vite 組合與 .github/workflows/ci.yml 的共用檢查入口。參考 agent-ade 的核心與畫面分工，但本專案不接管其任務核心。以上是讀檔查核，沒有重跑其他專案測試，也不複製憑證或部署設定。
@@ -108,7 +110,7 @@ session 以心跳期限判在線；重連帶原 session 憑證。短期掉線顯
 
 ## 基本設施與上線策略
 
-本輪提供能啟動的 Fastify 基礎服務與 PostgreSQL Compose，/health/live 驗程序，/health/ready 實查 DB，/version 回報建置版本；沒有假聊天室或假角色。容器非 root、API 唯讀檔案系統、主機只綁 127.0.0.1，DB 不開主機 port，資料留獨立 volume。採服務健康條件控制啟動順序。
+本輪提供能啟動的 Rust／Axum 基礎服務與 PostgreSQL Compose，/health/live 驗程序，/health/ready 實查 DB，/version 回報建置版本；沒有假聊天室或假角色。容器非 root、API 唯讀檔案系統、主機只綁 127.0.0.1，DB 不開主機 port，資料留獨立 volume。採服務健康條件控制啟動順序。
 
 CI 在 PR 與 main/dev push 執行同一 check、建置容器、真 DB smoke。CD 初版可人工選版本，在 GitHub runner 隔離 Compose 驗證後留存映像產物；正式發佈待設定 repository、registry、部署主機與授權憑證，不放虛假的成功步驟。目標接通後，測試環境必須部署相同 digest，再提升正式；失敗停止提升，保留舊映像。
 

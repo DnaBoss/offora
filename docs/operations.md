@@ -4,7 +4,7 @@
 
 ## 開發與檢查
 
-使用 Node 22、Docker Compose。依賴以 package-lock.json 固定。npm run check 依序跑格式、ESLint 靜態檢查、TypeScript 型別與兩個 API 測試；npm run smoke 建容器、連真 PostgreSQL、驗版本、停 DB 驗 503，再恢復。
+使用 Rust 1.98、Docker Compose 與 Python 3（僅供驗收腳本）。Rust 依賴以 Cargo.lock 固定。bash scripts/check.sh 依序跑Rust 格式、Clippy 靜態檢查與兩個 API 測試；bash scripts/smoke.sh 建容器、連真 PostgreSQL、驗版本、停 DB 驗 503，再恢復。
 
 smoke 的固定專案名 pixel-office-smoke 與鎖避免重複啟動，使用 18781，不操作其他專案；留下停止的自有容器、映像與 database volume，不刪資料。測試密碼只用隔離本機環境，不能用於對外服務。
 
@@ -21,7 +21,7 @@ docker compose -p pixel-office-local stop
 
 ## CI 與交付
 
-.github/workflows/ci.yml 在 PR、main/dev push 執行 npm ci、check、容器 smoke。cd.yml 是可手動執行的交付產物流程，依賴 CI 通過後保存帶 commit 標籤的映像。尚未連遠端 repository，因此兩者未在 GitHub 執行。
+.github/workflows/ci.yml 在 PR、main/dev push 執行 Rust 格式、Clippy、測試與容器 smoke。cd.yml 是可手動執行的交付產物流程，依賴 CI 通過後保存帶 commit 標籤的映像。尚未連遠端 repository，因此兩者未在 GitHub 執行。
 
 CD 目前只到可部署產物，沒有冒充已連正式主機。接上目的地後需把同一映像 digest 部署測試環境、跑真客戶端，再提升到正式；禁止重新建置出不同產物冒充同版。不要在 fork PR 使用正式憑證或開 self-hosted runner 執行不可信程式。
 

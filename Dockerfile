@@ -1,19 +1,14 @@
-FROM node:22-bookworm-slim AS build
+FROM rust:1.98-bookworm AS build
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY tsconfig.json ./
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-COPY test ./test
-RUN npm run build && npm prune --omit=dev
+RUN cargo build --locked --release -j 2
 
-FROM node:22-bookworm-slim
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
 ARG APP_VERSION=development
-ENV NODE_ENV=production HOST=0.0.0.0 APP_VERSION=${APP_VERSION}
-WORKDIR /app
-COPY --from=build --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/dist/src ./dist/src
-COPY --chown=node:node package.json ./
-USER node
+ENV HOST=0.0.0.0 APP_VERSION=${APP_VERSION}
+COPY --from=build /app/target/release/ai-office /usr/local/bin/ai-office
+USER 10001:10001
 EXPOSE 3000
-CMD ["node", "dist/src/main.js"]
+CMD ["ai-office"]

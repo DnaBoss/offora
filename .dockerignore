@@ -6,3 +6,5 @@ dist
 artifacts
 docs
 loops
+
+target/

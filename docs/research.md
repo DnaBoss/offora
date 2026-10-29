@@ -15,6 +15,8 @@
 | [Compose 啟動順序](https://docs.docker.com/compose/how-tos/startup-order/)                             | service_healthy 可等待依賴健康                           | API 等 DB 準備好，另實測 DB 中斷；程序啟動不當可用證據                            |
 | [GitHub 映像發佈](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images) | 可建置映像並推送 registry                                | 本輪先建置與留存產物；未有目的地與授權不自動公開上傳 registry                     |
 
-本機參考：agent-pool-gateway 的前端 package.json 與 CI workflow，agent-ade 的 PLAN／README；只參考分工與品質入口，不把其文件當本案已完成證據。前端擬沿用 React 19 與 Vite，後端選 TypeScript 讓事件、SDK 與工具接入共用型別；未因相鄰專案是 Rust 就額外引入跨語言邊界。
+本機參考：agent-pool-gateway 的前端 package.json 與 CI workflow，agent-ade 的 PLAN／README；只參考分工與品質入口，不把其文件當本案已完成證據。前端擬沿用 React 19 與 Vite，後端依使用者決定改為 Rust，採用相鄰 Gateway 已用的 Axum／Tokio／SQLx 組合。跨語言以版本化 JSON 契約與共用測試向量保持一致。
 
 本機模型提出的草稿混入程式與不適用的「不做認證」範圍，因此不採用；本案有外部 AI，身分與隔離是首版必要條件。
+
+Rust 參考：[Axum 官方文件](https://docs.rs/axum/0.8.9/axum/)、[SQLx 官方文件](https://docs.rs/sqlx/0.8.6/sqlx/)。本案鎖定 SQLx 0.8 系列，未直接跟隨 latest 升到 0.9。

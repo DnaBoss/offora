@@ -1,0 +1,395 @@
+{
+  "figma": [
+    {
+      "kind": "skill",
+      "name": "figma-generative-plugins",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "prototyping",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "design-system-builder",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-shaders",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-create-new-file",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-generate-design",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-spec",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "mcp",
+      "name": "figma",
+      "installed": null,
+      "enabled": null,
+      "cached": null
+    },
+    {
+      "kind": "skill",
+      "name": "figma-code-connect",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-workflow",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-implement-motion",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-generate-library",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-generate-diagram",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-swiftui",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "plugin",
+      "name": "figma@openai-curated-remote",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-use-figjam",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-use-slides",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-code-workflows",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-use-motion",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-design-to-code",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-use",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    }
+  ],
+  "imagegen": [
+    {
+      "kind": "skill",
+      "name": "imagegen",
+      "installed": true,
+      "enabled": null,
+      "cached": false
+    },
+    {
+      "kind": "skill",
+      "name": "template-creator",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    }
+  ],
+  "design": [
+    {
+      "kind": "skill",
+      "name": "user-flows",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "recommended-tools",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "design-unreal-content-architecture",
+      "installed": true,
+      "enabled": null,
+      "cached": false
+    },
+    {
+      "kind": "skill",
+      "name": "ecommerce-ux",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "ux-audit-critique",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "create-toolset",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "component-design",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "prototyping",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "codebase-design",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "website-ui-design",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "prototype",
+      "installed": true,
+      "enabled": true,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "design-system-builder",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-create-new-file",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "accessibility-audit",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "wireframes",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "grill-me",
+      "installed": true,
+      "enabled": true,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "environment-level-design",
+      "installed": true,
+      "enabled": null,
+      "cached": false
+    },
+    {
+      "kind": "skill",
+      "name": "ui-ux-help",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-generate-design",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "microinteractions-motion",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-spec",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "ui-ux-designer",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "create-toolset",
+      "installed": true,
+      "enabled": null,
+      "cached": false
+    },
+    {
+      "kind": "skill",
+      "name": "grill-with-docs",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "codebase-design",
+      "installed": true,
+      "enabled": true,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "forms-onboarding-ux",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "guide-unreal-ai-development",
+      "installed": true,
+      "enabled": null,
+      "cached": false
+    },
+    {
+      "kind": "skill",
+      "name": "ux-writing-microcopy",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "figma-code-connect",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    },
+    {
+      "kind": "skill",
+      "name": "high-fidelity-mockups",
+      "installed": null,
+      "enabled": null,
+      "cached": true
+    }
+  ],
+  "playwright": [
+    {
+      "kind": "mcp",
+      "name": "playwright",
+      "installed": null,
+      "enabled": true,
+      "cached": null
+    },
+    {
+      "kind": "mcp",
+      "name": "playwright",
+      "installed": null,
+      "enabled": true,
+      "cached": null
+    }
+  ]
+}
