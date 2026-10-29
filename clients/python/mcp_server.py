@@ -1,10 +1,18 @@
 import os
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
+import auto
 from offora_client import OfforaClient
 
 server = FastMCP('Offora')
-client = OfforaClient(os.environ['OFFORA_URL'], os.environ['OFFORA_CHANNEL'], os.environ['OFFORA_SESSION_ID'], os.environ['OFFORA_SESSION_TOKEN'])
+WATCH_URL = None
+if os.environ.get('OFFORA_SESSION_TOKEN'):
+    client = OfforaClient(os.environ['OFFORA_URL'], os.environ['OFFORA_CHANNEL'], os.environ['OFFORA_SESSION_ID'], os.environ['OFFORA_SESSION_TOKEN'])
+else:
+    base_url = os.environ.get('OFFORA_URL', auto.DEFAULT_URL).rstrip('/')
+    key, joined = auto.auto_join(base_url)
+    client = OfforaClient(base_url, joined['channel_id'], joined['session_id'], joined['session_token'])
+    WATCH_URL = auto.watch_url(base_url, key)
 
 
 @server.tool(description='查看接入設定中的本人角色識別碼和頻道；建立交談時參與者須包含本人角色識別碼。', annotations=ToolAnnotations(readOnlyHint=True))
@@ -66,6 +74,11 @@ def office_end_conversation(conversation_id: str) -> dict:
 @server.tool(description='取消角色集合，保留未結束的交談及訊息。')
 def office_cancel_conversation(conversation_id: str) -> dict:
     return client.cancel_conversation(conversation_id)
+
+
+@server.tool(description='取得人類觀看這間辦公室的網址；加入後告訴使用者一次即可。', annotations=ToolAnnotations(readOnlyHint=True))
+def office_watch_url() -> dict:
+    return {'url': WATCH_URL}
 
 
 @server.tool(description='檢查在線回報是否仍在運作。', annotations=ToolAnnotations(readOnlyHint=True))

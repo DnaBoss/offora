@@ -8,6 +8,7 @@ services:
     environment:
       DATABASE_URL: postgres://office:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/office
       OFFORA_TRUSTED_PROXIES: ${OFFORA_TRUSTED_PROXIES:-}
+      OFFORA_AUTO_JOIN: ${OFFORA_AUTO_JOIN:-}
     ports:
       - "127.0.0.1:${APP_PORT:-18780}:3000"
     depends_on:

@@ -55,6 +55,20 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [pauseMotion, setPauseMotion] = useState(false)
   useEffect(() => {
+    const key = new URLSearchParams(location.hash.slice(1)).get('office')
+    if (!key || saved !== null) return
+    history.replaceState(null, '', location.pathname)
+    setBusy(true)
+    fetch('/api/v1/auto/watch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ office_key: key }) })
+      .then(async response => {
+        const result = await response.json()
+        if (!response.ok) throw new Error(result?.error?.message || '無法進入辦公室')
+        setToken(result.session_token); setChannel(result.channel_id); setConnected(true)
+      })
+      .catch(cause => setError(cause instanceof Error ? cause.message : '無法進入辦公室'))
+      .finally(() => setBusy(false))
+  }, [])
+  useEffect(() => {
     try {
       if (connected) sessionStorage.setItem(connectionKey, JSON.stringify({ token: token.trim(), channel: channel.trim(), observer: observerMode }))
       else sessionStorage.removeItem(connectionKey)

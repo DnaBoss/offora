@@ -1,3 +1,4 @@
+mod auto;
 mod conversations;
 mod events;
 mod invitations;
@@ -65,6 +66,8 @@ pub fn app_with_trusted_proxies(
         .route("/api/v1/spaces/{space}/channels", post(management::channel))
         .route("/api/v1/agents", post(management::agent))
         .route("/api/v1/management", get(management::catalog))
+        .route("/api/v1/auto/join", post(auto::join))
+        .route("/api/v1/auto/watch", post(auto::watch))
         .route("/api/v1/observers", post(observers::create))
         .route(
             "/api/v1/spaces/{space}/agents/{agent}/revoke",

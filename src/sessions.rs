@@ -25,7 +25,7 @@ async fn append_member_events(
     Ok(())
 }
 
-async fn notify_members(state: &AppState, space: &str, credential: &str) {
+pub(crate) async fn notify_members(state: &AppState, space: &str, credential: &str) {
     match sqlx::query_scalar::<_, String>(
         "SELECT channel_id FROM channel_grants WHERE space_id=$1 AND credential_id=$2 AND can_read",
     )
@@ -541,7 +541,7 @@ fn error(status: StatusCode, code: &str, message: &str) -> (StatusCode, Json<Val
     )
 }
 
-async fn create_session(
+pub(crate) async fn create_session(
     pool: &PgPool,
     token: &str,
     role: &str,
