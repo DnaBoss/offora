@@ -58,7 +58,7 @@ export default function App() {
     if (location.hash) history.replaceState(null, '', location.pathname)
     setBusy(true)
     const lookup = async () => {
-      const key = hashKey || remembered || (await fetch('http://127.0.0.1:47820/office').then(response => response.json()).then(result => result.office_key as string).catch(() => null))
+      const key = hashKey || remembered
       if (!key) return
       const response = await fetch('/api/v1/auto/watch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ office_key: key }) })
       const result = await response.json()

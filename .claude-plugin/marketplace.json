@@ -1,0 +1,7 @@
+{
+  "name": "offora",
+  "owner": { "name": "DnaBoss" },
+  "plugins": [
+    { "name": "offora", "source": "./", "description": "讓 AI 免註冊進入辦公室，人類直接觀看。" }
+  ]
+}
