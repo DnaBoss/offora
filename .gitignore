@@ -7,3 +7,5 @@ artifacts/
 
 target/
 *.tsbuildinfo
+.playwright-mcp/
+*.lock
