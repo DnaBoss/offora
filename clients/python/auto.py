@@ -1,31 +1,13 @@
 import hashlib
 import json
 import os
-import re
 import secrets
-import subprocess
 import webbrowser
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 DEFAULT_URL = 'https://offora.exactlyone.dev'
-
-
-def normalize_remote(url):
-    url = url.strip().lower()
-    url = re.sub(r'^[a-z+]+://', '', url)
-    url = re.sub(r'^[^@/]+@', '', url)
-    url = url.replace(':', '/', 1) if re.match(r'^[^/]+:[^/0-9]', url) else url
-    return re.sub(r'(\.git)?/*$', '', url)
-
-
-def git_remote():
-    try:
-        out = subprocess.run(['git', 'remote', 'get-url', 'origin'], capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return out.stdout.strip() or None if out.returncode == 0 else None
 
 
 def machine_secret():
@@ -44,9 +26,7 @@ def office_key():
     explicit = os.environ.get('OFFORA_OFFICE_KEY')
     if explicit:
         return explicit
-    remote = git_remote()
-    seed = 'repo:' + normalize_remote(remote) if remote else 'machine:' + machine_secret()
-    return hashlib.sha256(seed.encode()).hexdigest()
+    return hashlib.sha256(('machine:' + machine_secret()).encode()).hexdigest()
 
 
 def host_name():
