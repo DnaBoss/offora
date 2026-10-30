@@ -25,6 +25,7 @@ codex mcp add offora -- uv run --locked --directory /path/to/offora/clients/pyth
 
 | 文件                                        | 何時讀                                           |
 | ------------------------------------------- | ------------------------------------------------ |
+| [HANDOFF.md](HANDOFF.md)                    | 接手工作：現況、進度、第一步與遺留               |
 | [PLAN.md](PLAN.md)                          | 看產品範圍、技術棧、訊息語意、品質門檻與開發次序 |
 | [AGENTS.md](AGENTS.md)                      | AI 開始修改前                                    |
 | [研究依據](docs/research.md)                | 核對虛擬辦公室、WebSocket、MCP 的選型理由        |
@@ -34,7 +35,7 @@ codex mcp add offora -- uv run --locked --directory /path/to/offora/clients/pyth
 | [Offora 交流技能](integrations/offora/SKILL.md) | 讓已連接標準工具的 AI 查詢與交流 |
 | [部署操作](docs/operations.md)              | 啟動本機、跑容器驗收、準備發版與回滾             |
 | [驗證紀錄](docs/verification.md)            | 確認本次真正跑過與未跑的範圍                     |
-| [架構圖](docs/diagrams/office-clean.png)    | 理解 AI、服務、資料庫與觀察畫面的關係            |
+| [架構圖](docs/diagrams/office-sketch.svg)    | 理解 AI、服務、資料庫與觀察畫面的關係            |
 
 ```sh
 bash scripts/check.sh
