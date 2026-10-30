@@ -3,6 +3,62 @@ import { Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Text
 import type { Conversation, Member } from './types'
 
 const WORLD_WIDTH = 1280
+const FIGURE_SIZE = 130
+const HIP = 0.618
+const LEFT_LEG_X = 0.455
+const RIGHT_LEG_X = 0.55
+
+type Parts = { upper: Texture, left: Texture, right: Texture, width: number, hip: number }
+type Rig = { body: Container, upper: Sprite, left: Sprite, right: Sprite, seed: number }
+
+function cutParts(texture: Texture): Parts {
+  const width = texture.width
+  const hip = Math.round(texture.height * HIP)
+  const half = Math.round(width / 2)
+  const frame = (x: number, y: number, w: number, h: number) => new Texture({ source: texture.source, frame: new Rectangle(x, y, w, h) })
+  return { upper: frame(0, 0, width, hip), left: frame(0, hip, half, texture.height - hip), right: frame(half, hip, width - half, texture.height - hip), width, hip }
+}
+
+function buildRig(parts: Parts, texture: Texture, seed: number): Rig {
+  const scaleX = FIGURE_SIZE / parts.width
+  const scaleY = FIGURE_SIZE / texture.height
+  const body = new Container()
+  const upper = new Sprite(parts.upper)
+  upper.anchor.set(0.5, 1)
+  upper.scale.set(scaleX, scaleY)
+  upper.y = -FIGURE_SIZE / 2 + parts.hip * scaleY
+  const leg = (part: Texture, legX: number, offset: number) => {
+    const sprite = new Sprite(part)
+    sprite.anchor.set((legX * parts.width - offset) / part.width, 0)
+    sprite.scale.set(scaleX, scaleY)
+    sprite.x = (legX - 0.5) * FIGURE_SIZE
+    sprite.y = upper.y
+    return sprite
+  }
+  const left = leg(parts.left, LEFT_LEG_X, 0)
+  const right = leg(parts.right, RIGHT_LEG_X, Math.round(parts.width / 2))
+  body.addChild(left, right, upper)
+  return { body, upper, left, right, seed }
+}
+
+function pose(rig: Rig, walking: boolean, now: number) {
+  if (walking) {
+    const swing = Math.sin(now / 110 + rig.seed)
+    rig.left.rotation = swing * 0.5
+    rig.right.rotation = -swing * 0.5
+    rig.left.y = rig.upper.y - Math.max(0, swing) * 5
+    rig.right.y = rig.upper.y - Math.max(0, -swing) * 5
+    rig.body.y = -Math.abs(swing) * 4
+    rig.body.rotation = swing * 0.03
+    return
+  }
+  rig.left.rotation = 0
+  rig.right.rotation = 0
+  rig.left.y = rig.upper.y
+  rig.right.y = rig.upper.y
+  rig.body.rotation = 0
+  rig.body.y = Math.sin(now / 450 + rig.seed) * 1.5
+}
 
 function shorten(value: string, limit: number) {
   const characters = Array.from(value)
@@ -51,7 +107,8 @@ export default function Office({ members, conversations, speaking, speech, onSel
       if (!active) return
       const deskTexture = new Texture({ source: background.source, frame: new Rectangle(932, 660, 205, 220) })
       const floorTexture = new Texture({ source: background.source, frame: new Rectangle(770, 280, 200, 200) })
-      sceneTextures = [deskTexture, floorTexture]
+      const parts = textures.map(texture => cutParts(texture))
+      sceneTextures = [deskTexture, floorTexture, ...parts.flatMap(item => [item.upper, item.left, item.right])]
       motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
       setLoadError(false)
       element.appendChild(app.canvas)
@@ -123,6 +180,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const speakers = members.filter(member => member.presence !== 'offline' && speaking.includes(member.session_id) && !conversations.some(item => item.participants.includes(member.session_id)))
         const speakersPerRow = Math.max(1, Math.floor(width / 160))
         const groupX = (slot: number) => width * (groupColumns === 1 ? 0.5 : slot % 2 === 0 ? 0.27 : 0.73)
+        const rigs: { rig: Rig, walking: boolean }[] = []
         const moves: { id: string, person: Container, from: { x: number, y: number }, to: { x: number, y: number } }[] = []
         const reducedMotion = pauseMotion || motionPreference?.matches === true
         const currentIds = new Set(conversations.map(item => item.conversation_id))
@@ -206,12 +264,11 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const y = discussion ? 205 + Math.floor(slot / groupColumns) * layout.stride + participantRow * 190 : isSpeaking ? 150 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRow * 190 : height - 100 - (seatRows - 1 - row) * 190
           const previous = positions.current.get(member.session_id) ?? { x, y }
           const person = new Container({ x: previous.x, y: previous.y, eventMode: 'static', cursor: 'pointer' })
-          const sprite = new Sprite(textures[appearances.current.get(member.session_id) ?? 0])
-          sprite.anchor.set(0.5)
-          sprite.width = 130
-          sprite.height = 130
-          sprite.alpha = member.presence === 'offline' ? 0.45 : 1
-          person.addChild(sprite)
+          const look = appearances.current.get(member.session_id) ?? 0
+          const rig = buildRig(parts[look], textures[look], index * 1.7)
+          rig.body.alpha = member.presence === 'offline' ? 0.45 : 1
+          rigs.push({ rig, walking: Math.hypot(x - previous.x, y - previous.y) > 1 })
+          person.addChild(rig.body)
           const activity = discussionCount > 1 ? `（${discussionCount} 場）` : isSpeaking ? '（剛發話）' : ''
           const presence = member.presence === 'offline' ? '（離線）' : member.presence === 'reconnecting' ? '（重連中）' : ''
           const label = new Text({ text: displayName(member, index), style: { fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold', fill: '#193241', stroke: { color: '#fff8e6', width: 4 } } })
@@ -272,13 +329,15 @@ export default function Office({ members, conversations, speaking, speech, onSel
         app.stage.addChild(player)
         const started = performance.now()
         animate = () => {
-          const progress = reducedMotion ? 1 : Math.min((performance.now() - started) / 800, 1)
+          const now = performance.now()
+          const progress = reducedMotion ? 1 : Math.min((now - started) / 800, 1)
           for (const move of moves) {
             move.person.x = move.from.x + (move.to.x - move.from.x) * progress
             move.person.y = move.from.y + (move.to.y - move.from.y) * progress
             positions.current.set(move.id, { x: move.person.x, y: move.person.y })
           }
-          if (progress === 1) app.ticker.remove(animate)
+          for (const item of rigs) pose(item.rig, !reducedMotion && progress < 1 && item.walking, now)
+          if (reducedMotion) app.ticker.remove(animate)
         }
         animate()
         app.ticker.add(animate)
