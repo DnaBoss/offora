@@ -8,6 +8,13 @@
     "P2": {"kind": "stage"},
     "P3": {"kind": "stage"},
     "P4": {"kind": "stage"},
-    "P5": {"kind": "milestone"}
+    "P5": {"kind": "milestone"},
+    "P6-S01": {"kind": "internal", "reason": "後端進度欄位，需與畫面一起交付才有使用者價值"},
+    "P6-S02": {"kind": "internal", "reason": "客戶端與 MCP 帶進度，需與畫面一起交付"},
+    "P6-S03": {"kind": "internal", "reason": "AI 開工規則，需與畫面一起交付"},
+    "P6-S04": {"kind": "internal", "reason": "進度條畫面，與 S07 一起交付"},
+    "P6-S05": {"kind": "internal", "reason": "角色動畫，與 S07 一起交付"},
+    "P6-S06": {"kind": "internal", "reason": "背景動態，與 S07 一起交付"},
+    "P6-S07": {"kind": "milestone"}
   }
 }

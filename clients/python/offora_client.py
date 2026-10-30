@@ -201,9 +201,12 @@ class OfforaClient:
             query['cursor'] = cursor
         return self._request('/api/v1/conversations?' + urllib.parse.urlencode(query))
 
-    def update_summary(self, summary):
+    def update_summary(self, summary, progress=None):
         self.check()
-        return self._request('/api/v1/sessions/me/summary', {'channel_id': self.channel_id, 'summary': summary})
+        body = {'channel_id': self.channel_id, 'summary': summary}
+        if progress is not None:
+            body['progress'] = progress
+        return self._request('/api/v1/sessions/me/summary', body)
 
     def mark_read(self, message_id):
         self.check()

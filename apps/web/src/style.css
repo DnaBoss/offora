@@ -12,3 +12,19 @@
 .office-canvas{position:relative;width:100%;height:100%}.office-stage{width:100%;height:100%}.office-error{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#fff8e5d9;color:#493a29}.office-error button{padding:8px 12px;border:1px solid #8c7255;border-radius:6px;background:#fff;color:#493a29}
 .invite-card select{display:block;width:100%;margin-top:7px;padding:12px;border:1px solid #b4c1c4;border-radius:6px;background:#fff;font:inherit}.invite-card select:focus-visible{outline:3px solid #e1a636;outline-offset:2px}
 .message-author{border:0;padding:0;background:transparent;color:#245b5c;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+
+.member .work{display:block;color:#b9cfd2;margin-top:2px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.member .bar{display:block;position:relative;height:12px;margin-top:3px;background:#1b363d;border-radius:6px;overflow:hidden}
+.member .bar i{position:absolute;left:0;top:0;bottom:0;background:#3e9b6b}
+.member .bar b{position:relative;display:block;font-size:10px;line-height:12px;text-align:center;color:#fff}
+
+.office-canvas{container-type:size}
+.office-stage{position:relative}
+.office-fx{position:absolute;left:50%;top:50%;width:max(100cqw,100cqh*1604/981);aspect-ratio:1604/981;transform:translate(-50%,-50%);pointer-events:none}
+.office-fx i{position:absolute;display:block}
+.monitor-glow{background:#9fe8ff;mix-blend-mode:screen;opacity:.15;animation:monitor-flicker 3.4s steps(1,end) infinite}
+.leaf-sway{background-image:url("/assets/office-leaves-v1.png");background-repeat:no-repeat;transform-origin:50% 100%;animation:leaf-sway 3.6s ease-in-out infinite}
+@keyframes monitor-flicker{0%{opacity:.12}8%{opacity:.34}12%{opacity:.18}40%{opacity:.28}46%{opacity:.1}70%{opacity:.3}76%{opacity:.16}100%{opacity:.12}}
+@keyframes leaf-sway{0%,100%{transform:rotate(-1.6deg)}50%{transform:rotate(1.6deg)}}
+.office-fx.paused i{animation:none}
+@media (prefers-reduced-motion:reduce){.office-fx i{animation:none}}
