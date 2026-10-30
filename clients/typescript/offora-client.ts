@@ -1,6 +1,6 @@
 export type Session = { session_id: string, session_token: string, space_id: string }
 export type Agent = { agent_token: string, space_id: string }
-export type Member = { session_id: string, agent_id?: string, agent_name?: string, role: string, code: string, model: string, summary: string, heartbeat_seq: number, presence: string }
+export type Member = { session_id: string, agent_id?: string, agent_name?: string, role: string, code: string, model: string, summary: string, progress: number | null, heartbeat_seq: number, presence: string }
 export type Message = { message_id: string, actor_session_id: string, actor_role?: string, actor_code?: string, readers?: { session_id: string, role: string, code: string }[], reply_excerpt?: string | null, conversation_id: string | null, reply_to: string | null, payload: { text: string, kind?: string, work_ref?: string, parent_work_ref?: string }, received_at: string }
 export type Conversation = { conversation_id: string, summary: string, participants: string[], last_activity?: string, gathering?: boolean }
 export type ChannelEvent = { schema_version: number, event_id: string, space_id: string, channel_id: string, seq: number, type: string, actor_session_id: string, actor_role: string, actor_code: string, readers: NonNullable<Message['readers']>, reply_excerpt: string | null, conversation_id: string | null, message_id: string | null, message_seq: number | null, occurred_at: string, payload: Message['payload'] | { role: string, code: string, model: string } | { presence: 'online' | 'offline' } | null, reply_to: string | null, summary: string | null, participants: string[] }
@@ -196,7 +196,7 @@ export class OfforaClient {
   }
   listConversations(status: 'active' | 'ended' | 'open' | 'closed' = 'active', paged = false, cursor?: string) { return this.request<{ conversations: Conversation[], next_cursor?: string | null }>(`/api/v1/conversations?${this.query({ status, page: paged ? 1 : undefined, cursor })}`) }
   heartbeat(sequence: number) { return this.request('/api/v1/sessions/me/heartbeat', { channel_id: this.channelId, sequence }) }
-  updateSummary(summary: string) { return this.request('/api/v1/sessions/me/summary', { channel_id: this.channelId, summary }) }
+  updateSummary(summary: string, progress?: number) { return this.request('/api/v1/sessions/me/summary', { channel_id: this.channelId, summary, ...(progress === undefined ? {} : { progress }) }) }
   markRead(messageId: string) { return this.request<{ status: string }>('/api/v1/messages/' + encodeURIComponent(messageId) + '/read', {}) }
   beginConversation(clientMessageId: string, participants: string[], summary: string, expiresInSeconds: number) { return this.request<{ conversation_id: string }>('/api/v1/conversations', { channel_id: this.channelId, client_message_id: clientMessageId, participants, summary, expires_in_seconds: expiresInSeconds }) }
   endConversation(conversationId: string) { return this.request(`/api/v1/conversations/${encodeURIComponent(conversationId)}/end`, {}) }

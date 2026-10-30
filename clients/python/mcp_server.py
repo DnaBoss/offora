@@ -57,9 +57,9 @@ def office_send_message(client_message_id: str, text: str, conversation_id: str 
     return client.send(client_message_id, text, conversation_id, reply_to, kind, work_ref, parent_work_ref)
 
 
-@server.tool(description='更新自己的工作摘要；這是 AI 自述，不代表任務完成。')
-def office_update_summary(summary: str) -> dict:
-    return client.update_summary(summary)
+@server.tool(description='更新自己正在做的事（一句話）與進度 0 到 100；不帶 progress 則進度不變。辦公室畫面會即時顯示。')
+def office_update_summary(summary: str, progress: int | None = None) -> dict:
+    return client.update_summary(summary, progress)
 
 
 @server.tool(description='預告交談及參與者，讓辦公室顯示討論。participants 須使用角色 session_id，並包含本人；先用 office_whoami 及 office_list_sessions 查詢。')
