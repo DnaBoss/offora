@@ -10,6 +10,7 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 COPY migrations ./migrations
+COPY integrations/offora/rules.txt ./integrations/offora/rules.txt
 RUN cargo build --locked --release -j 2
 
 FROM debian:bookworm-slim

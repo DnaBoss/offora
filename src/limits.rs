@@ -22,6 +22,7 @@ const WINDOW: Duration = Duration::from_secs(60);
 const IP_LIMIT: u32 = 2000;
 const TOKEN_LIMIT: u32 = 1200;
 const SPACE_LIMIT: u32 = 1800;
+const JOIN_LIMIT: u32 = 20;
 const MAX_KEYS: usize = 4096;
 
 #[derive(Clone, Default)]
@@ -75,6 +76,13 @@ pub(crate) fn client_ip(
 impl Limiter {
     pub fn admit_space(&self, space: &str) -> bool {
         self.admit(&[(format!("space:{space}"), SPACE_LIMIT)], Instant::now())
+    }
+    pub(crate) fn admit_mcp(&self, peer: &str, joining: bool) -> bool {
+        let mut keys = vec![(format!("ip:{peer}"), IP_LIMIT)];
+        if joining {
+            keys.push((format!("join:{peer}"), JOIN_LIMIT));
+        }
+        self.admit(&keys, Instant::now())
     }
     pub(crate) fn admit_socket(&self, peer: &str, hash: &[u8], space: &str) -> bool {
         let key: String = hash.iter().map(|byte| format!("{byte:02x}")).collect();
@@ -156,6 +164,18 @@ pub async fn limit(State(guard): State<Guard>, request: Request, next: Next) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mcp_joins_are_limited_per_address() {
+        let limiter = Limiter::default();
+        for _ in 0..JOIN_LIMIT {
+            assert!(limiter.admit_mcp("a", true));
+        }
+        assert!(!limiter.admit_mcp("a", true));
+        assert!(limiter.admit_mcp("a", false));
+        assert!(limiter.admit_mcp("b", true));
+    }
+
     use axum::{Router, body::Body, http::Request as HttpRequest, middleware, routing::get};
     use tower::ServiceExt;
 

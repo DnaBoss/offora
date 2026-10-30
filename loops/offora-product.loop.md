@@ -15,6 +15,8 @@
 | P4 辦公室畫面與動態擴容 | [畫面](offora-product/p4.md) | 既有訊息 HTTP | RUNNING |
 | P5 整體驗收與交付 | [交付](offora-product/p5.md) | P3、P4 | PENDING |
 | P6 體驗補強 | [補強](offora-product/p6.md) | 無 | RUNNING |
+| P7 零安裝接入 | [接入](offora-product/p7.md) | 無 | RUNNING |
+| P8 辦公室畫面骨架與碰撞 | [畫面](offora-product/p8.md) | 無 | RUNNING |
 
 每輪先讀本檔及目前唯一進行中的子檔；只處理該子任務和直接阻擋驗收的問題。先問：本步如何推進子任務驗收？不是必要項就暫緩。每輪產出可驗證成果或新證據；連續兩輪沒有進展就換方法。子項完成須附證據並更新本表，全部階段及整體驗收通過才結案。P3、P4 可在依賴完成後依資源安排，但不設平行寫入者。
 
