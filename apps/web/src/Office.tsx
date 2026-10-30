@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Texture, TilingSprite } from 'pixi.js'
 import type { Conversation, Member } from './types'
 
+const WORLD_WIDTH = 1280
+
 function shorten(value: string, limit: number) {
   const characters = Array.from(value)
   if (characters.length <= limit) return value
@@ -22,9 +24,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
   const root = useRef<HTMLDivElement>(null)
   const [loadError, setLoadError] = useState(false)
   const [attempt, setAttempt] = useState(0)
-  const [columns, setColumns] = useState(1)
-  const [seatCount, setSeatCount] = useState(0)
-  const [stageWidth, setStageWidth] = useState(0)
+  const world = useRef({ height: 440 })
   const positions = useRef(new Map<string, { x: number, y: number }>())
   const seats = useRef(new Map<string, number>())
   const appearances = useRef(new Map<string, number>())
@@ -32,32 +32,17 @@ export default function Office({ members, conversations, speaking, speech, onSel
   useEffect(() => {
     const element = root.current
     if (!element) return
-    const observer = new ResizeObserver(entries => {
-      const width = entries[0].contentRect.width
-      setColumns(Math.max(1, Math.floor(width / 160)))
-      setStageWidth(width)
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [])
-  useEffect(() => {
-    const element = root.current
-    if (!element) return
     const office = element.closest('.office') as HTMLElement | null
-    const canvas = element.parentElement
-    if (!office || !canvas) return
+    if (!office) return
     let active = true
     let initialized = false
-    let stageObserver: ResizeObserver | undefined
     let sceneTextures: Texture[] = []
     let motionPreference: MediaQueryList | undefined
     let motionChanged: (() => void) | undefined
-    let viewportChanged: (() => void) | undefined
-    let scrollChanged: (() => void) | undefined
-    let canvasObserver: ResizeObserver | undefined
+    let keyDown: ((event: KeyboardEvent) => void) | undefined
+    let keyUp: ((event: KeyboardEvent) => void) | undefined
     const app = new Application()
     void (async () => {
-      element.style.height = `${office.clientHeight}px`
       await app.init({ backgroundAlpha: 0, resizeTo: element, antialias: false, resolution: window.devicePixelRatio || 1, autoDensity: true })
       if (!active) { app.destroy(true); return }
       initialized = true
@@ -70,13 +55,68 @@ export default function Office({ members, conversations, speaking, speech, onSel
       motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
       setLoadError(false)
       element.appendChild(app.canvas)
+      const player = new Container({ eventMode: 'none' })
+      const playerSprite = new Sprite(textures[5])
+      playerSprite.anchor.set(0.5)
+      playerSprite.width = 130
+      playerSprite.height = 130
+      playerSprite.tint = 0xbfe3ff
+      const playerLabel = new Text({ text: '你（觀察者）', style: { fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold', fill: '#193241', stroke: { color: '#bfe3ff', width: 4 } } })
+      playerLabel.anchor.set(0.5, 0)
+      playerLabel.y = 47
+      player.addChild(playerSprite, playerLabel)
+      const walker = { x: -1, y: -1, tx: -1, ty: -1 }
+      const pressed = new Set<string>()
+      const keyAxis = () => ({
+        x: (pressed.has('ArrowRight') || pressed.has('d') ? 1 : 0) - (pressed.has('ArrowLeft') || pressed.has('a') ? 1 : 0),
+        y: (pressed.has('ArrowDown') || pressed.has('s') ? 1 : 0) - (pressed.has('ArrowUp') || pressed.has('w') ? 1 : 0)
+      })
+      const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      const keyNames = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd']
+      keyDown = (event: KeyboardEvent) => {
+        const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
+        if (!keyNames.includes(key) || typing(event.target) || event.ctrlKey || event.metaKey || event.altKey) return
+        pressed.add(key)
+        walker.tx = -1
+        event.preventDefault()
+      }
+      keyUp = (event: KeyboardEvent) => { pressed.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key) }
+      window.addEventListener('keydown', keyDown)
+      window.addEventListener('keyup', keyUp)
+      app.stage.eventMode = 'static'
+      app.stage.hitArea = new Rectangle(-100000, -100000, 200000, 200000)
+      app.stage.on('pointertap', event => { walker.tx = event.global.x - app.stage.x; walker.ty = event.global.y - app.stage.y })
+      const walk = () => {
+        const worldHeight = world.current.height
+        const width = WORLD_WIDTH
+        if (walker.x < 0) { walker.x = width / 2; walker.y = Math.max(100, worldHeight - 100) }
+        const step = Math.min(app.ticker.deltaMS, 50) / 1000 * 280
+        const axis = keyAxis()
+        if (axis.x || axis.y) {
+          const length = Math.hypot(axis.x, axis.y)
+          walker.x += axis.x / length * step
+          walker.y += axis.y / length * step
+        } else if (walker.tx >= 0) {
+          const dx = walker.tx - walker.x
+          const dy = walker.ty - walker.y
+          const distance = Math.hypot(dx, dy)
+          if (distance <= step) { walker.x = walker.tx; walker.y = walker.ty; walker.tx = -1 } else { walker.x += dx / distance * step; walker.y += dy / distance * step }
+        }
+        walker.x = Math.max(65, Math.min(width - 65, walker.x))
+        walker.y = Math.max(90, Math.min(Math.max(90, worldHeight - 60), walker.y))
+        player.x = walker.x
+        player.y = walker.y
+        const viewWidth = app.screen.width
+        const viewHeight = app.screen.height
+        app.stage.x = viewWidth >= width ? (viewWidth - width) / 2 : -Math.max(0, Math.min(width - viewWidth, walker.x - viewWidth / 2))
+        app.stage.y = viewHeight >= worldHeight ? (viewHeight - worldHeight) / 2 : -Math.max(0, Math.min(worldHeight - viewHeight, walker.y - viewHeight / 2))
+      }
+      app.ticker.add(walk)
       const redraw = () => {
         app.stage.removeChildren()
         app.ticker.stop()
         app.ticker.remove(animate)
-        const width = app.screen.width
-        const height = canvas.clientHeight
-        app.stage.y = -office.scrollTop
+        const width = WORLD_WIDTH
         const columns = Math.max(1, Math.floor(width / 160))
         const layout = groupLayout(width, conversations)
         const groupColumns = layout.columns
@@ -116,8 +156,10 @@ export default function Office({ members, conversations, speaking, speech, onSel
           return (nameCounts.get(name) ?? 0) > 1 ? `${name} ·${index + 1}` : name
         }
         const totalSeats = Math.max(0, ...[...seats.current.values()].map(value => value + 1))
-        setSeatCount(previous => previous === totalSeats ? previous : totalSeats)
         const seatRows = Math.ceil(totalSeats / columns)
+        const speakerRows = Math.ceil(speakers.length / speakersPerRow)
+        const height = Math.max(440, 280 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRows * 190 + Math.ceil(Math.max(members.length, totalSeats) / columns) * 190)
+        world.current.height = height
         if (seatRows) {
           const floor = new TilingSprite({ texture: floorTexture, width, height: seatRows * 190 })
           floor.y = height - seatRows * 190 - 10
@@ -214,6 +256,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
           badge.on('pointertap', () => onSelectConversation(discussion.conversation_id))
           app.stage.addChild(badge)
         }
+        app.stage.addChild(player)
         const started = performance.now()
         animate = () => {
           const progress = reducedMotion ? 1 : Math.min((performance.now() - started) / 800, 1)
@@ -230,21 +273,10 @@ export default function Office({ members, conversations, speaking, speech, onSel
       }
       let animate = () => {}
       redraw()
-      app.renderer.on('resize', redraw)
       motionChanged = redraw
       motionPreference.addEventListener('change', motionChanged)
-      viewportChanged = () => { element.style.height = `${office.clientHeight}px`; app.resize() }
-      scrollChanged = () => { app.stage.y = -office.scrollTop }
-      office.addEventListener('scroll', scrollChanged, { passive: true })
-      stageObserver = new ResizeObserver(viewportChanged)
-      stageObserver.observe(office)
-      canvasObserver = new ResizeObserver(redraw)
-      canvasObserver.observe(canvas)
     })().catch(() => { if (active) setLoadError(true) })
-    return () => { active = false; stageObserver?.disconnect(); canvasObserver?.disconnect(); if (scrollChanged) office.removeEventListener('scroll', scrollChanged); if (motionChanged) motionPreference?.removeEventListener('change', motionChanged); if (initialized) app.destroy(true); for (const texture of sceneTextures) texture.destroy(false); sceneTextures = [] }
+    return () => { active = false; if (keyDown) window.removeEventListener('keydown', keyDown); if (keyUp) window.removeEventListener('keyup', keyUp); if (motionChanged) motionPreference?.removeEventListener('change', motionChanged); if (initialized) app.destroy(true); for (const texture of sceneTextures) texture.destroy(false); sceneTextures = [] }
   }, [members, conversations, speaking, speech, onSelect, onSelectConversation, pauseMotion, attempt])
-  const layout = groupLayout(stageWidth, conversations)
-  const speakerCount = members.filter(member => member.presence !== 'offline' && speaking.includes(member.session_id) && !conversations.some(item => item.participants.includes(member.session_id))).length
-  const speakerRows = Math.ceil(speakerCount / Math.max(1, Math.floor(stageWidth / 160)))
-  return <div className="office-canvas" style={{ minHeight: Math.max(440, 280 + Math.ceil(conversations.length / layout.columns) * layout.stride + speakerRows * 190 + Math.ceil(Math.max(members.length, seatCount) / columns) * 190) }}><div className="office-stage" ref={root} aria-hidden="true" />{loadError && <div className="office-error" role="alert"><span>辦公室畫面載入失敗</span><button onClick={() => { setLoadError(false); setAttempt(value => value + 1) }}>重新載入畫面</button></div>}</div>
+  return <div className="office-canvas"><div className="office-stage" ref={root} aria-hidden="true" />{loadError && <div className="office-error" role="alert"><span>辦公室畫面載入失敗</span><button onClick={() => { setLoadError(false); setAttempt(value => value + 1) }}>重新載入畫面</button></div>}</div>
 }
