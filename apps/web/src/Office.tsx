@@ -227,6 +227,19 @@ export default function Office({ members, conversations, speaking, speech, onSel
             person.addChild(status)
           }
           const message = speech[member.session_id]
+          if (!message && member.presence !== 'offline' && (member.summary || member.progress !== null)) {
+            if (member.summary) {
+              const work = new Text({ text: shorten(member.summary, 14), style: { fontFamily: 'sans-serif', fontSize: 12, fill: '#193241', stroke: { color: '#fff8e6', width: 4 } } })
+              work.anchor.set(0.5)
+              if (work.width > 145) work.scale.set(145 / work.width)
+              work.y = -92
+              person.addChild(work)
+            }
+            if (member.progress !== null) {
+              person.addChild(new Graphics().roundRect(-50, -80, 100, 8, 4).fill({ color: 0xe4d9c0 }).stroke({ color: 0x866b49, width: 1 }))
+              if (member.progress > 0) person.addChild(new Graphics().roundRect(-50, -80, member.progress, 8, 4).fill({ color: 0x3e9b6b }))
+            }
+          }
           if (message && member.presence !== 'offline') {
             const characters = Array.from(message.trim().replace(/\s+/g, ' '))
             const excerpt = characters.slice(0, 22).join('') + (characters.length > 22 ? '…' : '')

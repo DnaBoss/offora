@@ -12,3 +12,8 @@
 .office-canvas{position:relative;width:100%;height:100%}.office-stage{width:100%;height:100%}.office-error{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#fff8e5d9;color:#493a29}.office-error button{padding:8px 12px;border:1px solid #8c7255;border-radius:6px;background:#fff;color:#493a29}
 .invite-card select{display:block;width:100%;margin-top:7px;padding:12px;border:1px solid #b4c1c4;border-radius:6px;background:#fff;font:inherit}.invite-card select:focus-visible{outline:3px solid #e1a636;outline-offset:2px}
 .message-author{border:0;padding:0;background:transparent;color:#245b5c;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+
+.member .work{display:block;color:#b9cfd2;margin-top:2px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.member .bar{display:block;position:relative;height:12px;margin-top:3px;background:#1b363d;border-radius:6px;overflow:hidden}
+.member .bar i{position:absolute;left:0;top:0;bottom:0;background:#3e9b6b}
+.member .bar b{position:relative;display:block;font-size:10px;line-height:12px;text-align:center;color:#fff}
