@@ -13,7 +13,7 @@
 | [AI 接入契約](docs/integration-contract.md) | 實作 HTTP、WebSocket、MCP、SKILL 與外掛時        |
 | [部署操作](docs/operations.md)              | 啟動本機、跑容器驗收、準備發版與回滾             |
 | [驗證紀錄](docs/verification.md)            | 確認本次真正跑過與未跑的範圍                     |
-| [架構圖](docs/diagrams/office-clean.png)    | 理解 AI、服務、資料庫與觀察畫面的關係            |
+| [架構圖](docs/diagrams/office-sketch.svg)    | 理解 AI、服務、資料庫與觀察畫面的關係            |
 
 ```sh
 bash scripts/check.sh
