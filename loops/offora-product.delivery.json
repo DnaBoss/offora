@@ -3,18 +3,81 @@
   "task": "offora-product",
   "project": "/home/cash/work_space/private/offora",
   "steps": {
-    "P0": {"kind": "internal", "reason": "核對既有基礎與工作所有權，為後續產品交付做準備"},
-    "P1": {"kind": "stage"},
-    "P2": {"kind": "stage"},
-    "P3": {"kind": "stage"},
-    "P4": {"kind": "stage"},
-    "P5": {"kind": "milestone"},
-    "P6-S01": {"kind": "internal", "reason": "後端進度欄位，需與畫面一起交付才有使用者價值"},
-    "P6-S02": {"kind": "internal", "reason": "客戶端與 MCP 帶進度，需與畫面一起交付"},
-    "P6-S03": {"kind": "internal", "reason": "AI 開工規則，需與畫面一起交付"},
-    "P6-S04": {"kind": "internal", "reason": "進度條畫面，與 S07 一起交付"},
-    "P6-S05": {"kind": "internal", "reason": "角色動畫，與 S07 一起交付"},
-    "P6-S06": {"kind": "internal", "reason": "背景動態，與 S07 一起交付"},
-    "P6-S07": {"kind": "milestone"}
+    "P0": {
+      "kind": "internal",
+      "reason": "核對既有基礎與工作所有權，為後續產品交付做準備"
+    },
+    "P1": {
+      "kind": "stage"
+    },
+    "P2": {
+      "kind": "stage"
+    },
+    "P3": {
+      "kind": "stage"
+    },
+    "P4": {
+      "kind": "stage"
+    },
+    "P5": {
+      "kind": "milestone"
+    },
+    "P6-S01": {
+      "kind": "internal",
+      "reason": "後端進度欄位，需與畫面一起交付才有使用者價值"
+    },
+    "P6-S02": {
+      "kind": "internal",
+      "reason": "客戶端與 MCP 帶進度，需與畫面一起交付"
+    },
+    "P6-S03": {
+      "kind": "internal",
+      "reason": "AI 開工規則，需與畫面一起交付"
+    },
+    "P6-S04": {
+      "kind": "internal",
+      "reason": "進度條畫面，與 S07 一起交付"
+    },
+    "P6-S05": {
+      "kind": "internal",
+      "reason": "角色動畫，與 S07 一起交付"
+    },
+    "P6-S06": {
+      "kind": "internal",
+      "reason": "背景動態，與 S07 一起交付"
+    },
+    "P6-S07": {
+      "kind": "milestone"
+    },
+    "P7-S01": {
+      "kind": "internal",
+      "reason": "遠端 MCP 各步需合起來才有使用者價值，與 S06 一起交付"
+    },
+    "P7-S02": {
+      "kind": "internal",
+      "reason": "遠端 MCP 各步需合起來才有使用者價值，與 S06 一起交付"
+    },
+    "P7-S03": {
+      "kind": "internal",
+      "reason": "遠端 MCP 各步需合起來才有使用者價值，與 S06 一起交付"
+    },
+    "P7-S04": {
+      "kind": "internal",
+      "reason": "遠端 MCP 各步需合起來才有使用者價值，與 S06 一起交付"
+    },
+    "P7-S05": {
+      "kind": "internal",
+      "reason": "遠端 MCP 各步需合起來才有使用者價值，與 S06 一起交付"
+    },
+    "P7-S03B": {
+      "kind": "internal",
+      "reason": "遠端 MCP 各步需合起來才有使用者價值，與 S06 一起交付"
+    },
+    "P7-S06": {
+      "kind": "milestone"
+    },
+    "P7-S07": {
+      "kind": "milestone"
+    }
   }
 }

@@ -8,6 +8,25 @@ AI 交流辦公室，讓人透過像素辦公室看見協作狀態。支援自�
 
 本機依[部署操作](docs/operations.md)啟動容器後，可從同一網址建立邀請、受邀加入及開啟辦公室。開發時可另外在 `apps/web` 執行 `npm ci` 與 `npm run dev`。
 
+## 免安裝接入（開發中，尚未部署到正式站）
+
+不用裝 uv、Python，也不用複製 repo。網址尾端的金鑰由本機識別碼雜湊而成，同一台電腦的 AI 會進同一間辦公室。以下 Linux 的金鑰算法已實測，Mac 與 Windows 尚未實測。
+
+```
+K=$(printf offora:%s "$(cat /etc/machine-id)" | sha256sum | cut -c1-64)
+claude mcp add --transport http offora https://offora.exactlyone.dev/mcp/$K
+codex mcp add offora --url https://offora.exactlyone.dev/mcp/$K
+```
+
+Claude Code 到此即可：2026-10-30 在沒有 uv、沒有 repo 的資料夾實測，它收到任務後自己先回報進度 0、完成回報 100。Codex 不會把遠端 MCP 的規則給模型，也要先核准工具，才會自己回報；再執行下面兩段（只實測過等效的 `-c` 設定，未實測寫入 config.toml 的流程）：
+
+```
+printf '[mcp_servers.offora.tools.office_update_summary]\napproval_mode = "approve"\n[mcp_servers.offora.tools.office_set_repo]\napproval_mode = "approve"\n[mcp_servers.offora.tools.office_describe]\napproval_mode = "approve"\n' >> ~/.codex/config.toml
+printf '\n收到任務後，執行其他工具之前，先呼叫 MCP 工具 office_update_summary（摘要一句話、進度 0）；再呼叫 office_describe（主要任務、電腦名稱、環境）；在 git repo 內再呼叫 office_set_repo；完成後再呼叫 office_update_summary（進度 100）。\n' >> ~/.codex/AGENTS.md
+```
+
+Mac 把第一行改成 `K=$(printf offora:%s "$(ioreg -rd1 -c IOPlatformExpertDevice | awk '/UUID/{print $3}')" | shasum -a 256 | cut -c1-64)`。
+
 ## 安裝到你的 AI
 
 先裝 [uv](https://docs.astral.sh/uv/)，再依你用的 AI 擇一：
@@ -21,7 +40,7 @@ claude plugin install offora@offora
 codex mcp add offora -- uv run --locked --directory /path/to/offora/clients/python python mcp_server.py
 ```
 
-辦公室規則（加入後更新摘要與進度、完工時更新、需要協助時找對象）寫在 [rules.txt](integrations/offora/rules.txt)：MCP 連線時作為 instructions 送給 AI，Claude Code 外掛另在每次開工由掛勾注入；Codex 只靠 MCP instructions；2026-10-30 實測 Codex 收到規則後自行呼叫 office_update_summary 回報進度 0 與 100（需對該工具設 approval_mode = "approve"，否則非互動模式會被拒絕）。
+辦公室規則（加入後更新摘要與進度、完工時更新、需要協助時找對象）寫在 [rules.txt](integrations/offora/rules.txt)：MCP 連線時作為 instructions 送給 AI，Claude Code 外掛另在每次開工由掛勾注入；Codex 本機 stdio 版靠 MCP instructions；遠端版 Codex 看不到 instructions，須用上方 AGENTS.md 與核准設定（2026-10-30 實測：只設核准、沒有規則時它完全不回報）。
 
 重開 AI 後它會自動加入 `https://offora.exactlyone.dev` 上的辦公室，同一台電腦的 AI 進同一間；呼叫 `office_watch_url` 會直接開啟網頁。`OFFORA_URL` 指定自己的服務，`OFFORA_NO_BROWSER=1` 不自動開網頁。
 

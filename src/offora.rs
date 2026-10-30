@@ -4,6 +4,7 @@ mod events;
 mod invitations;
 mod limits;
 mod management;
+mod mcp;
 mod messages;
 mod observers;
 mod sessions;
@@ -49,6 +50,7 @@ struct AppState {
     version: String,
     limiter: limits::Limiter,
     trusted_proxies: Vec<IpAddr>,
+    mcp: mcp::Sessions,
 }
 
 pub fn app(pool: PgPool, version: String) -> Router {
@@ -77,6 +79,14 @@ pub fn app_with_trusted_proxies(
         .route(
             "/api/v1/auto/watch",
             post(auto::watch).layer(axum::extract::DefaultBodyLimit::max(1024)),
+        )
+        .route(
+            "/api/v1/auto/rooms",
+            post(auto::rooms).layer(axum::extract::DefaultBodyLimit::max(1024)),
+        )
+        .route(
+            "/api/v1/auto/name",
+            post(auto::rename).layer(axum::extract::DefaultBodyLimit::max(1024)),
         )
         .route("/api/v1/observers", post(observers::create))
         .route(
@@ -116,6 +126,13 @@ pub fn app_with_trusted_proxies(
         )
         .route("/health/ready", get(ready))
         .route("/version", get(version_info))
+        .route(
+            "/mcp/{key}",
+            post(mcp::post)
+                .get(|| async { StatusCode::METHOD_NOT_ALLOWED })
+                .delete(mcp::delete)
+                .layer(axum::extract::DefaultBodyLimit::max(65536)),
+        )
         .merge(api)
         .with_state(AppState {
             pool,
@@ -124,6 +141,7 @@ pub fn app_with_trusted_proxies(
             version,
             limiter,
             trusted_proxies,
+            mcp: mcp::Sessions::default(),
         })
 }
 

@@ -44,12 +44,12 @@ fn pow_ok(key: &str, code: &str, nonce: &str, bits: u32) -> bool {
 
 const PENDING: &str = "NOT EXISTS (SELECT 1 FROM sessions s WHERE s.space_id=a.space_id AND NOT s.is_observer AND s.last_heartbeat_at IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.space_id=a.space_id) AND NOT EXISTS (SELECT 1 FROM conversations c WHERE c.space_id=a.space_id)";
 
-enum Refusal {
+pub(crate) enum Refusal {
     Full,
     Busy,
 }
 
-fn enabled() -> bool {
+pub(crate) fn enabled() -> bool {
     std::env::var("OFFORA_AUTO_JOIN").is_ok_and(|v| v == "1")
 }
 
@@ -63,12 +63,14 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+pub(crate) fn valid_key(s: &str) -> bool {
+    (32..=128).contains(&s.len())
+        && s.bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+}
+
 fn office_key(body: &Value) -> Option<&str> {
-    body.get("office_key")?.as_str().filter(|s| {
-        (32..=128).contains(&s.len())
-            && s.bytes()
-                .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
-    })
+    body.get("office_key")?.as_str().filter(|s| valid_key(s))
 }
 
 fn text<'a>(body: &'a Value, key: &str, max: usize) -> Option<&'a str> {
@@ -84,9 +86,9 @@ fn error(status: StatusCode, code: &str, message: &str) -> (StatusCode, Json<Val
     )
 }
 
-struct Office {
-    space: String,
-    channel: String,
+pub(crate) struct Office {
+    pub(crate) space: String,
+    pub(crate) channel: String,
 }
 
 async fn ensure_office(
@@ -147,7 +149,7 @@ async fn ensure_office(
     }))
 }
 
-async fn new_agent(
+pub(crate) async fn new_agent(
     pool: &PgPool,
     key_hash: &[u8],
 ) -> Result<Result<(Office, String), Refusal>, sqlx::Error> {
@@ -424,6 +426,162 @@ pub async fn monitor_pending(pool: PgPool) {
         timer.tick().await;
         if expire_pending(&pool).await.is_err() {
             tracing::error!(code = "auto_expiry_failed", "無法清除未啟用的辦公室");
+        }
+    }
+}
+
+fn clip(value: Option<&str>, max: usize) -> Option<String> {
+    let value = value?.trim();
+    (!value.is_empty()).then(|| value.chars().take(max).collect())
+}
+
+pub(crate) async fn describe(
+    pool: &PgPool,
+    key: &str,
+    goal: Option<&str>,
+    computer: Option<&str>,
+    environment: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE auto_offices SET goal=COALESCE($2,goal), computer=COALESCE($3,computer), environment=COALESCE($4,environment) WHERE key_hash=$1")
+        .bind(Sha256::digest(key.as_bytes()).as_slice())
+        .bind(clip(goal, 200))
+        .bind(clip(computer, 60))
+        .bind(clip(environment, 60))
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub(crate) async fn link_repo(
+    pool: &PgPool,
+    computer_key: &str,
+    repo_key: &str,
+    label: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE auto_offices SET repo_label=$2 WHERE key_hash=$1")
+        .bind(Sha256::digest(repo_key.as_bytes()).as_slice())
+        .bind(clip(Some(label), 120))
+        .execute(pool)
+        .await?;
+    sqlx::query("INSERT INTO auto_office_repos (computer_hash,repo_key) VALUES ($1,$2) ON CONFLICT DO NOTHING")
+        .bind(Sha256::digest(computer_key.as_bytes()).as_slice())
+        .bind(repo_key)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+async fn room_row(pool: &PgPool, key: &str, kind: &str) -> Result<Option<Value>, sqlx::Error> {
+    let row = sqlx::query("SELECT name, goal, computer, environment, repo_label, extract(epoch from created_at)::float8 AS created FROM auto_offices WHERE key_hash=$1")
+        .bind(Sha256::digest(key.as_bytes()).as_slice())
+        .fetch_optional(pool)
+        .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    Ok(Some(json!({
+        "key": key,
+        "kind": kind,
+        "name": row.try_get::<Option<String>, _>("name")?,
+        "goal": row.try_get::<Option<String>, _>("goal")?,
+        "computer": row.try_get::<Option<String>, _>("computer")?,
+        "environment": row.try_get::<Option<String>, _>("environment")?,
+        "repo": row.try_get::<Option<String>, _>("repo_label")?,
+        "created": row.try_get::<f64, _>("created")?,
+    })))
+}
+
+pub async fn rooms(
+    State(state): State<AppState>,
+    Json(body): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    if !enabled() {
+        return error(StatusCode::NOT_FOUND, "not_found", "找不到此入口");
+    }
+    let Some(key) = office_key(&body) else {
+        return error(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "請提供辦公室金鑰",
+        );
+    };
+    let result: Result<Vec<Value>, sqlx::Error> = async {
+        let mut list = Vec::new();
+        if let Some(own) = room_row(&state.pool, key, "computer").await? {
+            list.push(own);
+        }
+        let links: Vec<String> = sqlx::query_scalar(
+            "SELECT repo_key FROM auto_office_repos WHERE computer_hash=$1 LIMIT 50",
+        )
+        .bind(Sha256::digest(key.as_bytes()).as_slice())
+        .fetch_all(&state.pool)
+        .await?;
+        for link in links {
+            if let Some(room) = room_row(&state.pool, &link, "repo").await? {
+                list.push(room);
+            }
+        }
+        list.sort_by(|a, b| {
+            a["created"]
+                .as_f64()
+                .partial_cmp(&b["created"].as_f64())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        Ok(list)
+    }
+    .await;
+    match result {
+        Ok(list) if !list.is_empty() => (StatusCode::OK, Json(json!({"rooms":list}))),
+        Ok(_) => error(
+            StatusCode::NOT_FOUND,
+            "office_not_found",
+            "這間辦公室還沒有 AI 進來",
+        ),
+        Err(_) => {
+            tracing::error!(code = "auto_rooms_failed", "無法列出辦公室");
+            error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "database_unavailable",
+                "暫時無法列出辦公室",
+            )
+        }
+    }
+}
+
+pub async fn rename(
+    State(state): State<AppState>,
+    Json(body): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    if !enabled() {
+        return error(StatusCode::NOT_FOUND, "not_found", "找不到此入口");
+    }
+    let Some(key) = office_key(&body) else {
+        return error(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "請提供辦公室金鑰",
+        );
+    };
+    let name = clip(body.get("name").and_then(Value::as_str), 40);
+    match sqlx::query("UPDATE auto_offices SET name=$2 WHERE key_hash=$1")
+        .bind(Sha256::digest(key.as_bytes()).as_slice())
+        .bind(name)
+        .execute(&state.pool)
+        .await
+    {
+        Ok(done) if done.rows_affected() == 1 => (StatusCode::OK, Json(json!({"status":"ok"}))),
+        Ok(_) => error(
+            StatusCode::NOT_FOUND,
+            "office_not_found",
+            "找不到這間辦公室",
+        ),
+        Err(_) => {
+            tracing::error!(code = "auto_rename_failed", "無法命名辦公室");
+            error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "database_unavailable",
+                "暫時無法命名",
+            )
         }
     }
 }

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Texture, TilingSprite } from 'pixi.js'
 import type { Conversation, Member } from './types'
+import { Grid, along, length, type Point, type Rect } from './navigation'
+import { layoutDesks, type Spot } from './layout'
 
 const WORLD_WIDTH = 1280
 const FIGURE_SIZE = 130
@@ -12,58 +14,97 @@ const LEAVES = [[1066, 116, 70, 90], [426, 644, 98, 100], [1140, 840, 140, 110],
 function place([x, y, width, height]: number[]) {
   return { left: `${x / BACKGROUND_WIDTH * 100}%`, top: `${y / BACKGROUND_HEIGHT * 100}%`, width: `${width / BACKGROUND_WIDTH * 100}%`, height: `${height / BACKGROUND_HEIGHT * 100}%` }
 }
-const HIP = 0.618
-const LEFT_LEG_X = 0.455
-const RIGHT_LEG_X = 0.55
-
-type Parts = { upper: Texture, left: Texture, right: Texture, width: number, hip: number }
-type Rig = { body: Container, upper: Sprite, left: Sprite, right: Sprite, seed: number }
-
-function cutParts(texture: Texture): Parts {
-  const width = texture.width
-  const hip = Math.round(texture.height * HIP)
-  const half = Math.round(width / 2)
-  const frame = (x: number, y: number, w: number, h: number) => new Texture({ source: texture.source, frame: new Rectangle(x, y, w, h) })
-  return { upper: frame(0, 0, width, hip), left: frame(0, hip, half, texture.height - hip), right: frame(half, hip, width - half, texture.height - hip), width, hip }
+const HIP = 790
+const SOURCE_WIDTH = 1230
+const SOURCE_HEIGHT = 1278
+const SHOULDER_Y = 640
+const ARM_BOTTOM = 850
+const ARM_LEFT_CUT = 482
+const ARM_RIGHT_CUT = 722
+const ARM_EDGE = 400
+const LEG_SPLIT = 615
+const LEFT_HIP_X = 560
+const RIGHT_HIP_X = 676
+const ARM_REACH = [ARM_LEFT_CUT - 4, ARM_RIGHT_CUT + 4]
+const WALK_SPEED = 260
+const DESK_WIDTH = 130
+const LOUNGE_STRIDE = 150
+const LOUNGE_HEADER = 90
+const LOUNGE_WIDTH = 760
+const PROPS: Record<Spot['kind'] | 'sofaSet' | 'frame', [number, number, number, number, number]> = {
+  plantBig: [1120, 640, 100, 155, 0.75],
+  plantSmall: [298, 478, 72, 100, 0.8],
+  plantTall: [425, 645, 100, 128, 0.75],
+  shelf: [505, 735, 125, 105, 0.9],
+  cabinet: [1400, 120, 115, 95, 0.85],
+  lamp: [1535, 295, 55, 100, 0.9],
+  sofaSet: [1050, 290, 420, 310, 1],
+  frame: [1345, 35, 85, 92, 0.8]
 }
 
-function buildRig(parts: Parts, texture: Texture, seed: number): Rig {
-  const scaleX = FIGURE_SIZE / parts.width
-  const scaleY = FIGURE_SIZE / texture.height
+type Parts = { core: Texture, legLeft: Texture, legRight: Texture, armLeft: Texture, armRight: Texture }
+type Rig = { body: Container, core: Sprite, legLeft: Sprite, legRight: Sprite, armLeft: Sprite, armRight: Sprite, seed: number }
+
+function bake(source: Texture, x: number, y: number, w: number, h: number, erase = true): Texture {
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const context = canvas.getContext('2d')
+  const image = source.source.resource as CanvasImageSource
+  context?.drawImage(image, x, y, w, h, 0, 0, w, h)
+  if (erase) {
+    context?.clearRect(0 - x, SHOULDER_Y - y, ARM_LEFT_CUT, ARM_BOTTOM - SHOULDER_Y)
+    context?.clearRect(ARM_RIGHT_CUT - x, SHOULDER_Y - y, SOURCE_WIDTH - ARM_RIGHT_CUT, ARM_BOTTOM - SHOULDER_Y)
+  }
+  return Texture.from(canvas)
+}
+
+function cutParts(texture: Texture): Parts {
+  return {
+    core: bake(texture, 0, 0, SOURCE_WIDTH, HIP),
+    legLeft: bake(texture, 0, HIP, LEG_SPLIT, SOURCE_HEIGHT - HIP),
+    legRight: bake(texture, LEG_SPLIT, HIP, SOURCE_WIDTH - LEG_SPLIT, SOURCE_HEIGHT - HIP),
+    armLeft: bake(texture, ARM_EDGE, SHOULDER_Y, ARM_LEFT_CUT - ARM_EDGE, ARM_BOTTOM - SHOULDER_Y, false),
+    armRight: bake(texture, ARM_RIGHT_CUT, SHOULDER_Y, SOURCE_WIDTH - ARM_RIGHT_CUT, ARM_BOTTOM - SHOULDER_Y, false)
+  }
+}
+
+function buildRig(parts: Parts, seed: number, tint = 0xffffff): Rig {
+  const scaleX = FIGURE_SIZE / SOURCE_WIDTH
+  const scaleY = FIGURE_SIZE / SOURCE_HEIGHT
   const body = new Container()
-  const upper = new Sprite(parts.upper)
-  upper.anchor.set(0.5, 1)
-  upper.scale.set(scaleX, scaleY)
-  upper.y = -FIGURE_SIZE / 2 + parts.hip * scaleY
-  const leg = (part: Texture, legX: number, offset: number) => {
-    const sprite = new Sprite(part)
-    sprite.anchor.set((legX * parts.width - offset) / part.width, 0)
+  const limb = (texture: Texture, originX: number, originY: number, pivotX: number, pivotY: number) => {
+    const sprite = new Sprite(texture)
+    sprite.pivot.set(pivotX, pivotY)
     sprite.scale.set(scaleX, scaleY)
-    sprite.x = (legX - 0.5) * FIGURE_SIZE
-    sprite.y = upper.y
+    sprite.position.set((originX + pivotX - SOURCE_WIDTH / 2) * scaleX, (originY + pivotY - SOURCE_HEIGHT / 2) * scaleY)
+    sprite.tint = tint
     return sprite
   }
-  const left = leg(parts.left, LEFT_LEG_X, 0)
-  const right = leg(parts.right, RIGHT_LEG_X, Math.round(parts.width / 2))
-  body.addChild(left, right, upper)
-  return { body, upper, left, right, seed }
+  const core = limb(parts.core, 0, 0, 0, 0)
+  const legLeft = limb(parts.legLeft, 0, HIP, LEFT_HIP_X, 0)
+  const legRight = limb(parts.legRight, LEG_SPLIT, HIP, RIGHT_HIP_X - LEG_SPLIT, 0)
+  const armLeft = limb(parts.armLeft, ARM_EDGE, SHOULDER_Y, ARM_REACH[0] - ARM_EDGE, 0)
+  const armRight = limb(parts.armRight, ARM_RIGHT_CUT, SHOULDER_Y, ARM_REACH[1] - ARM_RIGHT_CUT, 0)
+  body.addChild(legLeft, legRight, core, armLeft, armRight)
+  return { body, core, legLeft, legRight, armLeft, armRight, seed }
 }
 
 function pose(rig: Rig, walking: boolean, now: number) {
   if (walking) {
     const swing = Math.sin(now / 110 + rig.seed)
-    rig.left.rotation = swing * 0.5
-    rig.right.rotation = -swing * 0.5
-    rig.left.y = rig.upper.y - Math.max(0, swing) * 5
-    rig.right.y = rig.upper.y - Math.max(0, -swing) * 5
+    rig.legLeft.rotation = swing * 0.5
+    rig.legRight.rotation = -swing * 0.5
+    rig.armLeft.rotation = -swing * 0.6
+    rig.armRight.rotation = swing * 0.6
     rig.body.y = -Math.abs(swing) * 4
     rig.body.rotation = swing * 0.03
     return
   }
-  rig.left.rotation = 0
-  rig.right.rotation = 0
-  rig.left.y = rig.upper.y
-  rig.right.y = rig.upper.y
+  rig.legLeft.rotation = 0
+  rig.legRight.rotation = 0
+  rig.armLeft.rotation = Math.sin(now / 700 + rig.seed) * 0.04
+  rig.armRight.rotation = -Math.sin(now / 700 + rig.seed) * 0.04
   rig.body.rotation = 0
   rig.body.y = Math.sin(now / 450 + rig.seed) * 1.5
 }
@@ -88,9 +129,10 @@ export default function Office({ members, conversations, speaking, speech, onSel
   const root = useRef<HTMLDivElement>(null)
   const [loadError, setLoadError] = useState(false)
   const [attempt, setAttempt] = useState(0)
-  const world = useRef({ height: 440 })
+  const world = useRef({ height: 440, spawnY: 340 })
   const positions = useRef(new Map<string, { x: number, y: number }>())
   const seats = useRef(new Map<string, number>())
+  const navigation = useRef<Grid | null>(null)
   const appearances = useRef(new Map<string, number>())
   const discussionSlots = useRef(new Map<string, number>())
   useEffect(() => {
@@ -116,21 +158,18 @@ export default function Office({ members, conversations, speaking, speech, onSel
       const deskTexture = new Texture({ source: background.source, frame: new Rectangle(932, 660, 205, 220) })
       const floorTexture = new Texture({ source: background.source, frame: new Rectangle(770, 280, 200, 200) })
       const parts = textures.map(texture => cutParts(texture))
-      sceneTextures = [deskTexture, floorTexture, ...parts.flatMap(item => [item.upper, item.left, item.right])]
+      const props = Object.fromEntries(Object.entries(PROPS).map(([name, [x, y, w, h]]) => [name, new Texture({ source: background.source, frame: new Rectangle(x, y, w, h) })])) as Record<keyof typeof PROPS, Texture>
+      sceneTextures = [deskTexture, floorTexture, ...Object.values(props), ...parts.flatMap(item => [item.core, item.legLeft, item.legRight, item.armLeft, item.armRight])]
       motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
       setLoadError(false)
       element.appendChild(app.canvas)
       const player = new Container({ eventMode: 'none' })
-      const playerSprite = new Sprite(textures[5])
-      playerSprite.anchor.set(0.5)
-      playerSprite.width = 130
-      playerSprite.height = 130
-      playerSprite.tint = 0xbfe3ff
+      const playerRig = buildRig(parts[5], 3.1, 0xbfe3ff)
       const playerLabel = new Text({ text: '你（觀察者）', style: { fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold', fill: '#193241', stroke: { color: '#bfe3ff', width: 4 } } })
       playerLabel.anchor.set(0.5, 0)
       playerLabel.y = 47
-      player.addChild(playerSprite, playerLabel)
-      const walker = { x: -1, y: -1, tx: -1, ty: -1 }
+      player.addChild(playerRig.body, playerLabel)
+      const walker = { x: -1, y: -1, route: [] as Point[] }
       const pressed = new Set<string>()
       const keyAxis = () => ({
         x: (pressed.has('ArrowRight') || pressed.has('d') ? 1 : 0) - (pressed.has('ArrowLeft') || pressed.has('a') ? 1 : 0),
@@ -142,7 +181,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
         if (!keyNames.includes(key) || typing(event.target) || event.ctrlKey || event.metaKey || event.altKey) return
         pressed.add(key)
-        walker.tx = -1
+        walker.route = []
         event.preventDefault()
       }
       keyUp = (event: KeyboardEvent) => { pressed.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key) }
@@ -150,27 +189,42 @@ export default function Office({ members, conversations, speaking, speech, onSel
       window.addEventListener('keyup', keyUp)
       app.stage.eventMode = 'static'
       app.stage.hitArea = new Rectangle(-100000, -100000, 200000, 200000)
-      app.stage.on('pointertap', event => { walker.tx = event.global.x - app.stage.x; walker.ty = event.global.y - app.stage.y })
+      app.stage.on('pointertap', event => {
+        const grid = navigation.current
+        if (grid) walker.route = grid.path({ x: walker.x, y: walker.y }, { x: event.global.x - app.stage.x, y: event.global.y - app.stage.y }).slice(1)
+      })
       const walk = () => {
+        const grid = navigation.current
+        if (!grid) return
         const worldHeight = world.current.height
         const width = WORLD_WIDTH
-        if (walker.x < 0) { walker.x = width / 2; walker.y = Math.max(100, worldHeight - 100) }
+        if (walker.x < 0) { const start = grid.nearestFree({ x: width / 2, y: world.current.spawnY }); walker.x = start.x; walker.y = start.y }
         const step = Math.min(app.ticker.deltaMS, 50) / 1000 * 280
         const axis = keyAxis()
+        const others = [...positions.current.values()]
+        const here = { x: walker.x, y: walker.y }
+        let next = here
         if (axis.x || axis.y) {
-          const length = Math.hypot(axis.x, axis.y)
-          walker.x += axis.x / length * step
-          walker.y += axis.y / length * step
-        } else if (walker.tx >= 0) {
-          const dx = walker.tx - walker.x
-          const dy = walker.ty - walker.y
-          const distance = Math.hypot(dx, dy)
-          if (distance <= step) { walker.x = walker.tx; walker.y = walker.ty; walker.tx = -1 } else { walker.x += dx / distance * step; walker.y += dy / distance * step }
+          walker.route = []
+          const size = Math.hypot(axis.x, axis.y)
+          next = grid.move(here, axis.x / size * step, axis.y / size * step, others)
+        } else if (walker.route.length) {
+          const target = walker.route[0]
+          const distance = Math.hypot(target.x - here.x, target.y - here.y)
+          const dx = distance <= step ? target.x - here.x : (target.x - here.x) / distance * step
+          const dy = distance <= step ? target.y - here.y : (target.y - here.y) / distance * step
+          next = grid.move(here, dx, dy, others)
+          if (next === here) walker.route = []
+          else if (distance <= step) walker.route.shift()
         }
-        walker.x = Math.max(65, Math.min(width - 65, walker.x))
-        walker.y = Math.max(90, Math.min(Math.max(90, worldHeight - 60), walker.y))
+        const walking = next.x !== here.x || next.y !== here.y
+        if (walking && Math.abs(next.x - here.x) > 0.01) playerRig.body.scale.x = next.x < here.x ? -1 : 1
+        walker.x = next.x
+        walker.y = next.y
+        pose(playerRig, walking, performance.now())
         player.x = walker.x
         player.y = walker.y
+        element.dataset.player = `${Math.round(walker.x)},${Math.round(walker.y)}`
         const viewWidth = app.screen.width
         const viewHeight = app.screen.height
         app.stage.x = viewWidth >= width ? (viewWidth - width) / 2 : -Math.max(0, Math.min(width - viewWidth, walker.x - viewWidth / 2))
@@ -182,14 +236,14 @@ export default function Office({ members, conversations, speaking, speech, onSel
         app.ticker.stop()
         app.ticker.remove(animate)
         const width = WORLD_WIDTH
-        const columns = Math.max(1, Math.floor(width / 160))
+        const loungeColumns = Math.max(1, Math.floor(LOUNGE_WIDTH / LOUNGE_STRIDE))
         const layout = groupLayout(width, conversations)
         const groupColumns = layout.columns
         const speakers = members.filter(member => member.presence !== 'offline' && speaking.includes(member.session_id) && !conversations.some(item => item.participants.includes(member.session_id)))
         const speakersPerRow = Math.max(1, Math.floor(width / 160))
         const groupX = (slot: number) => width * (groupColumns === 1 ? 0.5 : slot % 2 === 0 ? 0.27 : 0.73)
-        const rigs: { rig: Rig, walking: boolean }[] = []
-        const moves: { id: string, person: Container, from: { x: number, y: number }, to: { x: number, y: number } }[] = []
+        const moves: { id: string, person: Container, rig: Rig, path: Point[], total: number }[] = []
+        const obstacles: Rect[] = []
         const reducedMotion = pauseMotion || motionPreference?.matches === true
         const currentIds = new Set(conversations.map(item => item.conversation_id))
         for (const id of discussionSlots.current.keys()) if (!currentIds.has(id)) discussionSlots.current.delete(id)
@@ -208,6 +262,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
             const counts = textures.map((_, index) => [...appearances.current.values()].filter(value => value === index).length)
             appearances.current.set(member.session_id, counts.indexOf(Math.min(...counts)))
           }
+          if (member.presence === 'offline') { seats.current.delete(member.session_id); continue }
           if (seats.current.has(member.session_id)) continue
           const used = new Set(seats.current.values())
           let seat = 0
@@ -222,19 +277,55 @@ export default function Office({ members, conversations, speaking, speech, onSel
           return (nameCounts.get(name) ?? 0) > 1 ? `${name} ·${index + 1}` : name
         }
         const totalSeats = Math.max(0, ...[...seats.current.values()].map(value => value + 1))
-        const seatRows = Math.ceil(totalSeats / columns)
+        const deskLayout = layoutDesks(totalSeats, width)
+        const offline = members.filter(member => member.presence === 'offline')
+        const loungeHeight = offline.length ? LOUNGE_HEADER + Math.max(Math.ceil(offline.length / loungeColumns) * LOUNGE_STRIDE, 330) + 20 : 0
         const speakerRows = Math.ceil(speakers.length / speakersPerRow)
-        const height = Math.max(440, 280 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRows * 190 + Math.ceil(Math.max(members.length, totalSeats) / columns) * 190)
+        const height = Math.max(440, 280 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRows * 190 + deskLayout.height + loungeHeight)
         world.current.height = height
-        if (seatRows) {
-          const floor = new TilingSprite({ texture: floorTexture, width, height: seatRows * 190 })
-          floor.y = height - seatRows * 190 - 10
+        world.current.spawnY = Math.max(100, height - loungeHeight - 40)
+        const loungeTop = height - loungeHeight
+        const deskTop = loungeTop - deskLayout.height
+        if (deskLayout.height) {
+          const floor = new TilingSprite({ texture: floorTexture, width, height: deskLayout.height })
+          floor.y = deskTop
           app.stage.addChild(floor)
         }
+        const prop = (name: keyof typeof PROPS, x: number, bottom: number, solid = true) => {
+          const sprite = new Sprite(props[name])
+          sprite.anchor.set(0.5, 1)
+          sprite.scale.set(PROPS[name][4])
+          sprite.position.set(x, bottom)
+          app.stage.addChild(sprite)
+          if (solid) obstacles.push({ x: x - sprite.width / 2 + 6, y: bottom - sprite.height / 2, w: sprite.width - 12, h: sprite.height / 2 })
+        }
+        for (const spot of deskLayout.spots) prop(spot.kind, spot.x, deskTop + spot.y + 45)
+        if (offline.length) {
+          const floor = new TilingSprite({ texture: floorTexture, width, height: loungeHeight })
+          floor.y = loungeTop
+          app.stage.addChild(floor)
+          const sofa = new Sprite(props.sofaSet)
+          sofa.position.set(width - sofa.width - 30, loungeTop + LOUNGE_HEADER + 10)
+          app.stage.addChild(sofa)
+          obstacles.push({ x: sofa.x + 20, y: sofa.y + 40, w: sofa.width - 40, h: sofa.height - 70 })
+          const wall = new Graphics()
+          for (const [from, to] of [[0, width / 2 - 100], [width / 2 + 100, width]]) wall.rect(from, loungeTop, to - from, LOUNGE_HEADER).fill({ color: 0xe8d8b8 }).rect(from, loungeTop + LOUNGE_HEADER - 8, to - from, 8).fill({ color: 0x866b49 })
+          wall.rect(width / 2 - 106, loungeTop, 6, LOUNGE_HEADER).rect(width / 2 + 100, loungeTop, 6, LOUNGE_HEADER).fill({ color: 0x5b3f24 })
+          app.stage.addChild(wall)
+          for (const x of [220, 1000]) { const frame = new Sprite(props.frame); frame.anchor.set(0.5, 0); frame.scale.set(PROPS.frame[4]); frame.position.set(x, loungeTop + 6); app.stage.addChild(frame) }
+          obstacles.push({ x: 0, y: loungeTop, w: width / 2 - 100, h: LOUNGE_HEADER }, { x: width / 2 + 100, y: loungeTop, w: width / 2 - 100, h: LOUNGE_HEADER })
+          const sign = new Text({ text: `休息室（離線 ${offline.length} 人）`, style: { fontFamily: 'sans-serif', fontSize: 15, fontWeight: 'bold', fill: '#fff8e6', stroke: { color: '#5b3f24', width: 4 } } })
+          sign.anchor.set(0.5)
+          sign.position.set(width / 2 - 260, loungeTop + 40)
+          app.stage.addChild(sign)
+        }
         for (const member of members) {
+          if (member.presence === 'offline') continue
           const index = seats.current.get(member.session_id) ?? 0
-          const x = (index % columns + 0.5) * width / columns
-          const y = height - 100 - (seatRows - 1 - Math.floor(index / columns)) * 190
+          const seat = deskLayout.desks[index]
+          const x = seat.x
+          const y = deskTop + seat.y
+          obstacles.push({ x: x - DESK_WIDTH / 2, y: y - 123, w: DESK_WIDTH, h: 93 })
           const desk = new Container({ x, y, eventMode: 'static', cursor: 'pointer' })
           const deskImage = new Sprite(deskTexture)
           deskImage.anchor.set(0.5)
@@ -242,7 +333,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
           deskImage.width = 130
           deskImage.height = 140
           desk.addChild(deskImage)
-          const away = member.presence !== 'offline' && (speaking.includes(member.session_id) || conversations.some(item => item.participants.includes(member.session_id)))
+          const away = speaking.includes(member.session_id) || conversations.some(item => item.participants.includes(member.session_id))
           if (away) {
             const name = new Text({ text: displayName(member, index), style: { fontFamily: 'sans-serif', fontSize: 12, fontWeight: 'bold', fill: '#fff8e6', stroke: { color: '#754623', width: 3 } } })
             name.anchor.set(0.5)
@@ -253,10 +344,13 @@ export default function Office({ members, conversations, speaking, speech, onSel
           desk.on('pointertap', () => onSelect(member.session_id))
           app.stage.addChild(desk)
         }
+        const grid = new Grid({ left: 65, right: width - 65, top: 90, bottom: Math.max(90, height - 60) }, obstacles)
+        navigation.current = grid
+        element.dataset.obstacles = JSON.stringify(obstacles)
+        element.dataset.lounge = String(Math.round(loungeTop))
         members.forEach(member => {
           const index = seats.current.get(member.session_id) ?? 0
-          const col = index % columns
-          const row = Math.floor(index / columns)
+          const seat = deskLayout.desks[index] ?? { x: width / 2, y: 100 }
           const discussionIndex = member.presence === "offline" ? -1 : conversations.findIndex(item => item.participants.includes(member.session_id))
           const discussion = conversations[discussionIndex]
           const isSpeaking = !discussion && member.presence !== 'offline' && speaking.includes(member.session_id)
@@ -265,17 +359,17 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const participantIndex = discussion ? discussion.participants.indexOf(member.session_id) : 0
           const participantRow = Math.floor(participantIndex / layout.perRow)
           const rowCount = discussion ? Math.min(layout.perRow, discussion.participants.length - participantRow * layout.perRow) : 1
+          const loungeIndex = offline.indexOf(member)
           const speakerIndex = speakers.findIndex(item => item.session_id === member.session_id)
           const speakerRow = Math.floor(speakerIndex / speakersPerRow)
           const speakersInRow = Math.min(speakersPerRow, speakers.length - speakerRow * speakersPerRow)
-          const x = discussion ? Math.max(75, Math.min(width - 75, groupX(slot) + (participantIndex % layout.perRow - (rowCount - 1) / 2) * 160)) : isSpeaking ? width * 0.5 + (speakerIndex % speakersPerRow - (speakersInRow - 1) / 2) * 160 : (col + 0.5) * width / columns
-          const y = discussion ? 205 + Math.floor(slot / groupColumns) * layout.stride + participantRow * 190 : isSpeaking ? 150 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRow * 190 : height - 100 - (seatRows - 1 - row) * 190
+          const x = discussion ? Math.max(75, Math.min(width - 75, groupX(slot) + (participantIndex % layout.perRow - (rowCount - 1) / 2) * 160)) : isSpeaking ? width * 0.5 + (speakerIndex % speakersPerRow - (speakersInRow - 1) / 2) * 160 : member.presence === 'offline' ? 20 + (loungeIndex % loungeColumns + 0.5) * LOUNGE_STRIDE : seat.x
+          const y = discussion ? 205 + Math.floor(slot / groupColumns) * layout.stride + participantRow * 190 : isSpeaking ? 150 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRow * 190 : member.presence === 'offline' ? loungeTop + LOUNGE_HEADER + Math.floor(loungeIndex / loungeColumns) * LOUNGE_STRIDE + 60 : deskTop + seat.y
           const previous = positions.current.get(member.session_id) ?? { x, y }
           const person = new Container({ x: previous.x, y: previous.y, eventMode: 'static', cursor: 'pointer' })
           const look = appearances.current.get(member.session_id) ?? 0
-          const rig = buildRig(parts[look], textures[look], index * 1.7)
-          rig.body.alpha = member.presence === 'offline' ? 0.45 : 1
-          rigs.push({ rig, walking: Math.hypot(x - previous.x, y - previous.y) > 1 })
+          const rig = buildRig(parts[look], index * 1.7)
+          rig.body.alpha = member.presence === 'offline' ? 0.8 : 1
           person.addChild(rig.body)
           const activity = discussionCount > 1 ? `（${discussionCount} 場）` : isSpeaking ? '（剛發話）' : ''
           const presence = member.presence === 'offline' ? '（離線）' : member.presence === 'reconnecting' ? '（重連中）' : ''
@@ -316,7 +410,8 @@ export default function Office({ members, conversations, speaking, speech, onSel
           }
           person.on('pointertap', () => onSelect(member.session_id))
           app.stage.addChild(person)
-          moves.push({ id: member.session_id, person, from: previous, to: { x, y } })
+          const path = grid.path(previous, { x, y })
+          moves.push({ id: member.session_id, person, rig, path, total: length(path) })
         })
         const shortTitles = new Map(conversations.map(item => [item.conversation_id, shorten(item.summary, 10)]))
         const titleCounts = new Map<string, number>()
@@ -338,13 +433,20 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const started = performance.now()
         animate = () => {
           const now = performance.now()
-          const progress = reducedMotion ? 1 : Math.min((now - started) / 800, 1)
+          const elapsed = (now - started) / 1000
           for (const move of moves) {
-            move.person.x = move.from.x + (move.to.x - move.from.x) * progress
-            move.person.y = move.from.y + (move.to.y - move.from.y) * progress
-            positions.current.set(move.id, { x: move.person.x, y: move.person.y })
+            const travelled = reducedMotion ? move.total : Math.min(move.total, elapsed * WALK_SPEED)
+            const at = along(move.path, travelled)
+            const walking = !reducedMotion && travelled < move.total
+            if (walking) {
+              const ahead = along(move.path, Math.min(move.total, travelled + 6))
+              if (Math.abs(ahead.x - at.x) > 0.5) move.rig.body.scale.x = ahead.x < at.x ? -1 : 1
+            }
+            move.person.position.set(at.x, at.y)
+            positions.current.set(move.id, at)
+            pose(move.rig, walking, now)
           }
-          for (const item of rigs) pose(item.rig, !reducedMotion && progress < 1 && item.walking, now)
+          element.dataset.people = JSON.stringify(moves.map(move => [move.id, Math.round(positions.current.get(move.id)?.x ?? 0), Math.round(positions.current.get(move.id)?.y ?? 0)]))
           if (reducedMotion) app.ticker.remove(animate)
         }
         animate()
