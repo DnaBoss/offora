@@ -47,7 +47,29 @@
       "reason": "背景動態，與 S07 一起交付"
     },
     "P6-S07": {
-      "kind": "milestone"
+      "kind": "milestone",
+      "environment": "production",
+      "artifact": {
+        "path": "evidence/offora-product/release-be29287.tar.gz",
+        "sha256": "c4ad2e4dc861126c15bade3d6f3e96413d7417e826eb6beb6a02e95736838e83"
+      },
+      "validation": {
+        "path": "evidence/offora-product/validation.json",
+        "sha256": "ff29b3989852df46bcf000ea31bf53c504f933a71fa3aec76ac5344a2cf2b46d"
+      },
+      "authorization": {
+        "path": "evidence/offora-product/authorization.json",
+        "sha256": "6e7652fed13edb608c95b009c7bb79323656a3bf552374b806be4a22ee26b5a7"
+      },
+      "deploy": {
+        "path": "evidence/offora-product/deploy.sh",
+        "sha256": "db79368f9c2140351a7696f4c487a66daa323f9420bfd091d62d43eb4101cc54"
+      },
+      "readback": {
+        "path": "evidence/offora-product/readback.sh",
+        "sha256": "bdbac68edcb05a9d5d4011a05395c177c38f682750fd1780ac525ee26df8cfe6"
+      },
+      "timeout_seconds": 120
     },
     "P7-S01": {
       "kind": "internal",
@@ -74,10 +96,54 @@
       "reason": "遠端 MCP 各步需合起來才有使用者價值，與 S06 一起交付"
     },
     "P7-S06": {
-      "kind": "milestone"
+      "kind": "milestone",
+      "environment": "production",
+      "artifact": {
+        "path": "evidence/offora-product/release-be29287.tar.gz",
+        "sha256": "c4ad2e4dc861126c15bade3d6f3e96413d7417e826eb6beb6a02e95736838e83"
+      },
+      "validation": {
+        "path": "evidence/offora-product/validation.json",
+        "sha256": "ff29b3989852df46bcf000ea31bf53c504f933a71fa3aec76ac5344a2cf2b46d"
+      },
+      "authorization": {
+        "path": "evidence/offora-product/authorization.json",
+        "sha256": "6e7652fed13edb608c95b009c7bb79323656a3bf552374b806be4a22ee26b5a7"
+      },
+      "deploy": {
+        "path": "evidence/offora-product/deploy.sh",
+        "sha256": "db79368f9c2140351a7696f4c487a66daa323f9420bfd091d62d43eb4101cc54"
+      },
+      "readback": {
+        "path": "evidence/offora-product/readback.sh",
+        "sha256": "bdbac68edcb05a9d5d4011a05395c177c38f682750fd1780ac525ee26df8cfe6"
+      },
+      "timeout_seconds": 120
     },
     "P7-S07": {
-      "kind": "milestone"
+      "kind": "milestone",
+      "environment": "production",
+      "artifact": {
+        "path": "evidence/offora-product/release-be29287.tar.gz",
+        "sha256": "c4ad2e4dc861126c15bade3d6f3e96413d7417e826eb6beb6a02e95736838e83"
+      },
+      "validation": {
+        "path": "evidence/offora-product/validation.json",
+        "sha256": "ff29b3989852df46bcf000ea31bf53c504f933a71fa3aec76ac5344a2cf2b46d"
+      },
+      "authorization": {
+        "path": "evidence/offora-product/authorization.json",
+        "sha256": "6e7652fed13edb608c95b009c7bb79323656a3bf552374b806be4a22ee26b5a7"
+      },
+      "deploy": {
+        "path": "evidence/offora-product/deploy.sh",
+        "sha256": "db79368f9c2140351a7696f4c487a66daa323f9420bfd091d62d43eb4101cc54"
+      },
+      "readback": {
+        "path": "evidence/offora-product/readback.sh",
+        "sha256": "bdbac68edcb05a9d5d4011a05395c177c38f682750fd1780ac525ee26df8cfe6"
+      },
+      "timeout_seconds": 120
     },
     "P8-S01": {
       "kind": "internal",
