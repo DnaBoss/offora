@@ -229,6 +229,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const viewHeight = app.screen.height
         app.stage.x = viewWidth >= width ? (viewWidth - width) / 2 : -Math.max(0, Math.min(width - viewWidth, walker.x - viewWidth / 2))
         app.stage.y = viewHeight >= worldHeight ? (viewHeight - worldHeight) / 2 : -Math.max(0, Math.min(worldHeight - viewHeight, walker.y - viewHeight / 2))
+        element.dataset.camera = `${Math.round(app.stage.x)},${Math.round(app.stage.y)}`
       }
       app.ticker.add(walk)
       const redraw = () => {
