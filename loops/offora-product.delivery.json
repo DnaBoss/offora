@@ -162,7 +162,29 @@
       "reason": "畫面各步需合起來才有使用者價值，與 S04 瀏覽器驗收一起交付"
     },
     "P8-S04": {
-      "kind": "milestone"
+      "kind": "milestone",
+      "environment": "production",
+      "artifact": {
+        "path": "evidence/offora-product/release-416b5d5.tar.gz",
+        "sha256": "e111ade9abf921b559352641adf45c3155b92f7f13af10b3d2e85bb9dfcd8df5"
+      },
+      "validation": {
+        "path": "evidence/offora-product/validation-p8.json",
+        "sha256": "3ee95c1f8d677b4569730f8db75a301646eb1707cda08276b93dc7e2b5f9a6af"
+      },
+      "authorization": {
+        "path": "evidence/offora-product/authorization-p8.json",
+        "sha256": "1ab8d73953f94d806d18707593eb5d059e1f7ed177342aa5aa997d1267737fa3"
+      },
+      "deploy": {
+        "path": "evidence/offora-product/deploy.sh",
+        "sha256": "db79368f9c2140351a7696f4c487a66daa323f9420bfd091d62d43eb4101cc54"
+      },
+      "readback": {
+        "path": "evidence/offora-product/readback.sh",
+        "sha256": "bdbac68edcb05a9d5d4011a05395c177c38f682750fd1780ac525ee26df8cfe6"
+      },
+      "timeout_seconds": 120
     }
   }
 }
