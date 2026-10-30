@@ -40,6 +40,7 @@ jobs:
             "aws s3 cp s3://\($bucket)/offora/offora-\($sha).tar.gz /tmp/o.tgz --region \($region) --only-show-errors",
             "docker load -i /tmp/o.tgz | tail -1",
             "sed -i \"s/^APP_VERSION=.*/APP_VERSION=\($sha)/\" .env",
+            "docker compose -p offora run --rm --no-deps -T api offora migrate",
             "docker compose -p offora up -d --no-build --wait --remove-orphans 2>&1 | tail -3",
             "curl -fs http://127.0.0.1:18780/version"
           ]')
