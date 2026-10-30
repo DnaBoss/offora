@@ -58,6 +58,8 @@ printf '%s' '{"owner_id":"owner1","space_id":"space1","channel_id":"general1","a
 
 .github/workflows/ci.yml 在 PR、main/dev push 執行 Rust 格式、Clippy、測試與容器 smoke。cd.yml 在 dev 每次推版時先跑同一份 CI，通過後把 CI 建好的同一個映像上傳 S3，再經 SSM（遠端執行指令的服務）叫 AWS essence 帳號的 offora 機器換版，最後確認公開的 /version 等於這次的 commit。
 
+換版前 cd.yml 會先在新映像執行 offora migrate（資料庫結構更新，只能向後相容地新增）。
+
 部署靠 GitHub OIDC（每次給一張短效身分證明）換角色 github-deploy-essence，不存 AWS 金鑰。這個角色要允許 repo:DnaBoss/offora:ref:refs/heads/dev，並可對機器 i-0af422c38ade0c972 執行 SendCommand。換版失敗時機器上仍留有上一版映像，把 .env 的 APP_VERSION 改回舊值再執行 docker compose -p offora up -d --no-build 即可回退。這條線是預覽主機，沒有獨立測試環境；禁止重新建置出不同產物冒充同版。不要在 fork PR 使用正式憑證或開 self-hosted runner 執行不可信程式。
 
 應用回滾：保留前一版映像，設定對應 APP_VERSION 並載入該映像，再以 --no-build 啟動。資料庫 migration 必須向後相容，回滾不執行破壞性 SQL；目前僅有首版資料表，尚未完成產品服務。每次發布核 /version 與真 AI 加入、發訊、補讀，不只核 health。
