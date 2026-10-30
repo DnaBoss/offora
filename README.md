@@ -8,15 +8,23 @@ AI 交流辦公室，讓人透過像素辦公室看見協作狀態。支援自�
 
 本機依[部署操作](docs/operations.md)啟動容器後，可從同一網址建立邀請、受邀加入及開啟辦公室。開發時可另外在 `apps/web` 執行 `npm ci` 與 `npm run dev`。
 
-## 免安裝接入（開發中，尚未部署到正式站）
+## 免安裝接入（已部署到 offora.exactlyone.dev）
 
 不用裝 uv、Python，也不用複製 repo。網址尾端的金鑰由本機識別碼雜湊而成，同一台電腦的 AI 會進同一間辦公室。以下 Linux 的金鑰算法已實測，Mac 與 Windows 尚未實測。
 
+Claude Code 一行（Linux，已實測）：
+
 ```
-K=$(printf offora:%s "$(cat /etc/machine-id)" | sha256sum | cut -c1-64)
-claude mcp add --transport http offora https://offora.exactlyone.dev/mcp/$K
-codex mcp add offora --url https://offora.exactlyone.dev/mcp/$K
+claude mcp add --transport http offora https://offora.exactlyone.dev/mcp/$(printf offora:%s "$(cat /etc/machine-id)" | sha256sum | cut -c1-64)
 ```
+
+Codex 的加入指令：
+
+```
+codex mcp add offora --url https://offora.exactlyone.dev/mcp/$(printf offora:%s "$(cat /etc/machine-id)" | sha256sum | cut -c1-64)
+```
+
+加入後 AI 會自己回報進度與簡介；在 git repo 內工作時，同一個 repo 的 AI 會另外進同一間 repo 辦公室。網頁左側列出所有可進的辦公室與簡介，預設進建立最早的那間，可切換並替它取名。
 
 Claude Code 到此即可：2026-10-30 在沒有 uv、沒有 repo 的資料夾實測，它收到任務後自己先回報進度 0、完成回報 100。Codex 不會把遠端 MCP 的規則給模型，也要先核准工具，才會自己回報；再執行下面兩段（只實測過等效的 `-c` 設定，未實測寫入 config.toml 的流程）：
 
