@@ -78,6 +78,25 @@
     },
     "P7-S07": {
       "kind": "milestone"
+    },
+    "P8-S01": {
+      "kind": "internal",
+      "reason": "畫面各步需合起來才有使用者價值，與 S04 瀏覽器驗收一起交付"
+    },
+    "P8-S02": {
+      "kind": "internal",
+      "reason": "畫面各步需合起來才有使用者價值，與 S04 瀏覽器驗收一起交付"
+    },
+    "P8-S03": {
+      "kind": "internal",
+      "reason": "畫面各步需合起來才有使用者價值，與 S04 瀏覽器驗收一起交付"
+    },
+    "P8-S05": {
+      "kind": "internal",
+      "reason": "畫面各步需合起來才有使用者價值，與 S04 瀏覽器驗收一起交付"
+    },
+    "P8-S04": {
+      "kind": "milestone"
     }
   }
 }
