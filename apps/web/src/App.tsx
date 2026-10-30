@@ -24,9 +24,9 @@ export default function App() {
   const officeMembersKey = JSON.stringify(members.map(({ last_heartbeat_at, heartbeat_seq, ...rest }) => rest))
   const officeMembers = useMemo(() => members, [officeMembersKey])
   const gatheringConversations = useMemo(() => {
-    const present = new Set(members.filter(member => member.presence !== 'offline').map(member => member.session_id))
+    const present = new Set(officeMembers.filter(member => member.presence !== 'offline').map(member => member.session_id))
     return conversations.filter(item => item.gathering !== false && item.participants.some(id => present.has(id)))
-  }, [members, conversations])
+  }, [officeMembers, conversations])
   const [endedConversations, setEndedConversations] = useState<Conversation[]>([])
   const [endedCursor, setEndedCursor] = useState<string | null>(null)
   const [loadingEnded, setLoadingEnded] = useState(false)
