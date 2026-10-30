@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import secrets
@@ -5,6 +6,7 @@ import urllib.error
 import urllib.request
 
 base = os.environ["OFFORA_TEST_URL"]
+BITS = int(os.environ.get("OFFORA_AUTO_POW_BITS", "21"))
 
 
 def call(path, body):
@@ -22,8 +24,17 @@ def members(channel, token):
         return json.load(response)["sessions"]
 
 
+def solve(key, code, bits):
+    counter = 0
+    while True:
+        digest = int.from_bytes(hashlib.sha256(f"{key}:{code}:{counter}".encode()).digest(), "big")
+        if digest >> (256 - bits) == 0:
+            return str(counter)
+        counter += 1
+
+
 def join(key, code):
-    return call("/api/v1/auto/join", {"office_key": key, "role": "AI", "code": code, "model": "test"})
+    return call("/api/v1/auto/join", {"office_key": key, "role": "AI", "code": code, "model": "test", "pow": solve(key, code, BITS)})
 
 
 one, two = secrets.token_hex(32), secrets.token_hex(32)
@@ -40,4 +51,8 @@ seen = members(a["channel_id"], watcher["session_token"])
 assert {"A1", "B1"} <= {m["code"] for m in seen}
 assert c["session_id"] not in {m["session_id"] for m in seen}
 assert call("/api/v1/auto/watch", {"office_key": secrets.token_hex(32)})[0] == 404
+status, refused = call("/api/v1/auto/join", {"office_key": one, "role": "AI", "code": "NOPOW", "model": "test"})
+assert status == 428 and refused["error"]["bits"] == BITS
+status, refused = call("/api/v1/auto/join", {"office_key": one, "role": "AI", "code": "BADPOW", "model": "test", "pow": "0" * 33})
+assert status == 428
 print("auto join integration passed")
