@@ -191,6 +191,22 @@ assert request_api(summary_path, {"channel_id": "channel", "summary": "偽造", 
 assert request_api(summary_path, {"channel_id": "external-channel", "summary": "跨空間"}, session["session_token"])[0] == 403
 status, members = read("/api/v1/sessions?channel_id=channel", session["session_token"])
 assert status == 200 and next(member for member in members["sessions"] if member["session_id"] == session["session_id"])["summary"] == "正在設計"
+
+
+def progress_of():
+    listed = read("/api/v1/sessions?channel_id=channel", session["session_token"])[1]["sessions"]
+    return next(member for member in listed if member["session_id"] == session["session_id"])["progress"]
+
+
+assert progress_of() is None
+for bad in (101, -1, 50.5, "50"):
+    assert request_api(summary_path, {"channel_id": "channel", "summary": "正在設計", "progress": bad}, session["session_token"])[0] == 400
+assert request_api(summary_path, {"channel_id": "channel", "summary": "正在設計", "progress": 40}, session["session_token"])[0] == 200
+assert progress_of() == 40
+assert request_api(summary_path, {"channel_id": "channel", "summary": "改摘要不動進度"}, session["session_token"])[0] == 200
+assert progress_of() == 40
+assert request_api(summary_path, {"channel_id": "channel", "summary": "正在設計", "progress": None}, session["session_token"])[0] == 200
+assert progress_of() is None
 heartbeat_path = "/api/v1/sessions/me/heartbeat"
 assert request_api(heartbeat_path, {"channel_id": "channel", "sequence": 1}, external_session["session_token"])[0] == 403
 assert request_api(heartbeat_path, {"channel_id": "channel", "sequence": 1}, session["session_token"])[0] == 200

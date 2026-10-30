@@ -197,10 +197,13 @@ pub async fn update_summary(
             "憑證無效或已撤銷",
         );
     };
-    let Some(object) = body
-        .as_object()
-        .filter(|v| v.len() == 2 && v.contains_key("channel_id") && v.contains_key("summary"))
-    else {
+    let Some(object) = body.as_object().filter(|v| {
+        (2..=3).contains(&v.len())
+            && v.contains_key("channel_id")
+            && v.contains_key("summary")
+            && v.keys()
+                .all(|k| ["channel_id", "summary", "progress"].contains(&k.as_str()))
+    }) else {
         return error(
             StatusCode::BAD_REQUEST,
             "invalid_request",
@@ -225,7 +228,21 @@ pub async fn update_summary(
             "工作摘要格式不正確",
         );
     };
-    match update_own_summary(&state.pool, token, channel, summary).await {
+    let progress = match object.get("progress") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(value) => match value.as_i64().filter(|v| (0..=100).contains(v)) {
+            Some(v) => Some(Some(v as i16)),
+            None => {
+                return error(
+                    StatusCode::BAD_REQUEST,
+                    "invalid_request",
+                    "進度須為 0 到 100 的整數",
+                );
+            }
+        },
+    };
+    match update_own_summary(&state.pool, token, channel, summary, progress).await {
         Ok(SummaryUpdate::Updated(space, credential, changed)) => {
             if changed {
                 notify_members(&state, &space, &credential).await;
@@ -264,6 +281,7 @@ async fn update_own_summary(
     token: &str,
     channel: &str,
     summary: &str,
+    progress: Option<Option<i16>>,
 ) -> Result<SummaryUpdate, sqlx::Error> {
     let mut tx = pool.begin().await?;
     let hash = Sha256::digest(token.as_bytes());
@@ -275,10 +293,12 @@ async fn update_own_summary(
     let space: String = session.try_get("space_id")?;
     let credential: String = session.try_get("credential_id")?;
     if sqlx::query("SELECT 1 FROM channel_grants WHERE space_id=$1 AND credential_id=$2 AND channel_id=$3 AND can_presence FOR SHARE").bind(&space).bind(&credential).bind(channel).fetch_optional(&mut *tx).await?.is_none() { return Ok(SummaryUpdate::Forbidden); }
-    let changed = sqlx::query("UPDATE sessions SET summary=$1 WHERE id=$2 AND space_id=$3 AND summary IS DISTINCT FROM $1")
+    let changed = sqlx::query("UPDATE sessions SET summary=$1,progress=CASE WHEN $4 THEN $5 ELSE progress END WHERE id=$2 AND space_id=$3 AND (summary IS DISTINCT FROM $1 OR ($4 AND progress IS DISTINCT FROM $5))")
         .bind(summary)
         .bind(id)
         .bind(&space)
+        .bind(progress.is_some())
+        .bind(progress.flatten())
         .execute(&mut *tx)
         .await?.rows_affected() > 0;
     tx.commit().await?;
@@ -362,12 +382,12 @@ async fn list_members(
     let space_id: String = session.try_get("space_id")?;
     let credential_id: String = session.try_get("credential_id")?;
     if sqlx::query("SELECT 1 FROM channel_grants WHERE space_id=$1 AND credential_id=$2 AND channel_id=$3 AND can_read FOR SHARE").bind(&space_id).bind(&credential_id).bind(channel).fetch_optional(&mut *tx).await?.is_none() { return Ok(Members::Forbidden); }
-    let rows = sqlx::query("SELECT s.id,a.agent_id,ag.name AS agent_name,s.role,s.code,s.model,s.summary,s.heartbeat_seq,s.last_heartbeat_at::text AS last_heartbeat_at,CASE WHEN s.last_heartbeat_at IS NULL THEN 'unknown' WHEN s.last_heartbeat_at > now()-interval '30 seconds' THEN 'online' WHEN s.last_heartbeat_at > now()-interval '90 seconds' THEN 'reconnecting' ELSE 'offline' END AS presence FROM sessions s JOIN agent_credentials a ON a.id=s.credential_id AND a.space_id=s.space_id JOIN agents ag ON ag.id=a.agent_id JOIN channel_grants g ON g.space_id=s.space_id AND g.credential_id=a.id WHERE s.space_id=$1 AND g.channel_id=$2 AND g.can_read AND s.left_at IS NULL AND NOT s.is_observer AND a.revoked_at IS NULL AND ($3::text IS NULL OR s.code > $3) ORDER BY s.code LIMIT 201")
+    let rows = sqlx::query("SELECT s.id,a.agent_id,ag.name AS agent_name,s.role,s.code,s.model,s.summary,s.progress,s.heartbeat_seq,s.last_heartbeat_at::text AS last_heartbeat_at,CASE WHEN s.last_heartbeat_at IS NULL THEN 'unknown' WHEN s.last_heartbeat_at > now()-interval '30 seconds' THEN 'online' WHEN s.last_heartbeat_at > now()-interval '90 seconds' THEN 'reconnecting' ELSE 'offline' END AS presence FROM sessions s JOIN agent_credentials a ON a.id=s.credential_id AND a.space_id=s.space_id JOIN agents ag ON ag.id=a.agent_id JOIN channel_grants g ON g.space_id=s.space_id AND g.credential_id=a.id WHERE s.space_id=$1 AND g.channel_id=$2 AND g.can_read AND s.left_at IS NULL AND NOT s.is_observer AND a.revoked_at IS NULL AND ($3::text IS NULL OR s.code > $3) ORDER BY s.code LIMIT 201")
         .bind(&space_id).bind(channel).bind(cursor).fetch_all(&mut *tx).await?;
     let has_more = rows.len() > 200;
     let mut members = Vec::new();
     for row in rows.into_iter().take(200) {
-        members.push(json!({"session_id":row.try_get::<String,_>("id")?,"agent_id":row.try_get::<String,_>("agent_id")?,"agent_name":row.try_get::<String,_>("agent_name")?,"role":row.try_get::<String,_>("role")?,"code":row.try_get::<String,_>("code")?,"model":row.try_get::<String,_>("model")?,"summary":row.try_get::<String,_>("summary")?,"presence":row.try_get::<String,_>("presence")?,"last_heartbeat_at":row.try_get::<Option<String>,_>("last_heartbeat_at")?,"heartbeat_seq":row.try_get::<i64,_>("heartbeat_seq")?}));
+        members.push(json!({"session_id":row.try_get::<String,_>("id")?,"agent_id":row.try_get::<String,_>("agent_id")?,"agent_name":row.try_get::<String,_>("agent_name")?,"role":row.try_get::<String,_>("role")?,"code":row.try_get::<String,_>("code")?,"model":row.try_get::<String,_>("model")?,"summary":row.try_get::<String,_>("summary")?,"progress":row.try_get::<Option<i16>,_>("progress")?,"presence":row.try_get::<String,_>("presence")?,"last_heartbeat_at":row.try_get::<Option<String>,_>("last_heartbeat_at")?,"heartbeat_seq":row.try_get::<i64,_>("heartbeat_seq")?}));
     }
     tx.commit().await?;
     let next = if has_more {
