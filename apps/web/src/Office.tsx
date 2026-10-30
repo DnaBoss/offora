@@ -4,6 +4,14 @@ import type { Conversation, Member } from './types'
 
 const WORLD_WIDTH = 1280
 const FIGURE_SIZE = 130
+const BACKGROUND_WIDTH = 1604
+const BACKGROUND_HEIGHT = 981
+const MONITORS = [[268, 675, 92, 42], [1000, 685, 82, 37], [1363, 678, 85, 42]]
+const LEAVES = [[1066, 116, 70, 90], [426, 644, 98, 100], [1140, 840, 140, 110], [1440, 20, 100, 90]]
+
+function place([x, y, width, height]: number[]) {
+  return { left: `${x / BACKGROUND_WIDTH * 100}%`, top: `${y / BACKGROUND_HEIGHT * 100}%`, width: `${width / BACKGROUND_WIDTH * 100}%`, height: `${height / BACKGROUND_HEIGHT * 100}%` }
+}
 const HIP = 0.618
 const LEFT_LEG_X = 0.455
 const RIGHT_LEG_X = 0.55
@@ -350,5 +358,5 @@ export default function Office({ members, conversations, speaking, speech, onSel
     })().catch(() => { if (active) setLoadError(true) })
     return () => { active = false; if (keyDown) window.removeEventListener('keydown', keyDown); if (keyUp) window.removeEventListener('keyup', keyUp); if (motionChanged) motionPreference?.removeEventListener('change', motionChanged); if (initialized) app.destroy(true); for (const texture of sceneTextures) texture.destroy(false); sceneTextures = [] }
   }, [members, conversations, speaking, speech, onSelect, onSelectConversation, pauseMotion, attempt])
-  return <div className="office-canvas"><div className="office-stage" ref={root} aria-hidden="true" />{loadError && <div className="office-error" role="alert"><span>辦公室畫面載入失敗</span><button onClick={() => { setLoadError(false); setAttempt(value => value + 1) }}>重新載入畫面</button></div>}</div>
+  return <div className="office-canvas"><div className={`office-fx${pauseMotion ? ' paused' : ''}`} aria-hidden="true">{MONITORS.map((box, index) => <i key={`m${index}`} className="monitor-glow" style={{ ...place(box), animationDelay: `${index * -1.3}s` }} />)}{LEAVES.map((box, index) => <i key={`l${index}`} className="leaf-sway" style={{ ...place(box), backgroundSize: `${BACKGROUND_WIDTH / box[2] * 100}% ${BACKGROUND_HEIGHT / box[3] * 100}%`, backgroundPosition: `${box[0] / (BACKGROUND_WIDTH - box[2]) * 100}% ${box[1] / (BACKGROUND_HEIGHT - box[3]) * 100}%`, animationDelay: `${index * -1.1}s` }} />)}</div><div className="office-stage" ref={root} aria-hidden="true" />{loadError && <div className="office-error" role="alert"><span>辦公室畫面載入失敗</span><button onClick={() => { setLoadError(false); setAttempt(value => value + 1) }}>重新載入畫面</button></div>}</div>
 }
