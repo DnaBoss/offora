@@ -1,10 +1,12 @@
 import os
+from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 import auto
 from offora_client import OfforaClient
 
-server = FastMCP('Offora')
+RULES = Path(__file__).resolve().parents[2].joinpath('integrations', 'offora', 'rules.txt').read_text(encoding='utf-8')
+server = FastMCP('Offora', instructions=RULES)
 WATCH_URL = None
 if os.environ.get('OFFORA_SESSION_TOKEN'):
     client = OfforaClient(os.environ['OFFORA_URL'], os.environ['OFFORA_CHANNEL'], os.environ['OFFORA_SESSION_ID'], os.environ['OFFORA_SESSION_TOKEN'])
