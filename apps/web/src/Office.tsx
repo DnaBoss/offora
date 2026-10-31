@@ -37,8 +37,9 @@ const PROPS: Record<Spot['kind'], [number, number, number, number, number]> = {
   lamp: [1535, 295, 55, 100, 0.9]
 }
 
-type Parts = { core: Texture, legLeft: Texture, legRight: Texture, armLeft: Texture, armRight: Texture }
-type Rig = { body: Container, core: Sprite, legLeft: Sprite, legRight: Sprite, armLeft: Sprite, armRight: Sprite, seed: number }
+type Parts = { back: Texture, side: Texture, core: Texture, legLeft: Texture, legRight: Texture, armLeft: Texture, armRight: Texture }
+type Facing = 'down' | 'up' | 'side'
+type Rig = { body: Container, inner: Container, facing: Facing, front: Texture, back: Texture, side: Texture, legBase: number, core: Sprite, legLeft: Sprite, legRight: Sprite, armLeft: Sprite, armRight: Sprite, seed: number }
 
 function bake(source: Texture, x: number, y: number, w: number, h: number, erase = true): Texture {
   const canvas = document.createElement('canvas')
@@ -54,8 +55,42 @@ function bake(source: Texture, x: number, y: number, w: number, h: number, erase
   return Texture.from(canvas)
 }
 
+function turnedView(source: Texture, side: boolean): Texture {
+  const canvas = document.createElement('canvas')
+  canvas.width = SOURCE_WIDTH
+  canvas.height = HIP
+  const context = canvas.getContext('2d')
+  context?.drawImage(source.source.resource as CanvasImageSource, 0, 0, SOURCE_WIDTH, HIP, 0, 0, SOURCE_WIDTH, HIP)
+  const average = (x: number, y: number, w: number, h: number) => {
+    const data = context?.getImageData(x, y, w, h).data ?? new Uint8ClampedArray(4)
+    let r = 0, g = 0, b = 0, n = 0
+    for (let i = 0; i < data.length; i += 4) if (data[i + 3] > 200) { r += data[i]; g += data[i + 1]; b += data[i + 2]; n++ }
+    return n ? [r / n, g / n, b / n] : [40, 30, 30]
+  }
+  const hair = average(540, 230, 120, 60)
+  const shirt = average(500, 620, 60, 60)
+  const block = (x: number, y: number, w: number, h: number, color: number[], jitter: number) => {
+    for (let by = y; by < y + h; by += 16) for (let bx = x; bx < x + w; bx += 16) {
+      const shade = 1 + (Math.sin(bx * 12.9898 + by * 78.233) * 43758.5453 % 1) * jitter
+      context!.fillStyle = `rgb(${Math.round(color[0] * shade)},${Math.round(color[1] * shade)},${Math.round(color[2] * shade)})`
+      context!.fillRect(bx, by, 16, 16)
+    }
+  }
+  if (context) {
+    if (side) block(496, 336, 96, 192, hair, 0.18)
+    else {
+      block(496, 336, 208, 160, hair, 0.18)
+      block(520, 496, 160, 32, hair, 0.18)
+      block(578, 580, 64, 150, shirt, 0.06)
+    }
+  }
+  return Texture.from(canvas)
+}
+
 function cutParts(texture: Texture): Parts {
   return {
+    back: turnedView(texture, false),
+    side: turnedView(texture, true),
     core: bake(texture, 0, 0, SOURCE_WIDTH, HIP),
     legLeft: bake(texture, 0, HIP, LEG_SPLIT, SOURCE_HEIGHT - HIP),
     legRight: bake(texture, LEG_SPLIT, HIP, SOURCE_WIDTH - LEG_SPLIT, SOURCE_HEIGHT - HIP),
@@ -68,6 +103,8 @@ function buildRig(parts: Parts, seed: number, tint = 0xffffff): Rig {
   const scaleX = FIGURE_SIZE / SOURCE_WIDTH
   const scaleY = FIGURE_SIZE / SOURCE_HEIGHT
   const body = new Container()
+  const inner = new Container()
+  body.addChild(inner)
   const limb = (texture: Texture, originX: number, originY: number, pivotX: number, pivotY: number) => {
     const sprite = new Sprite(texture)
     sprite.pivot.set(pivotX, pivotY)
@@ -81,23 +118,46 @@ function buildRig(parts: Parts, seed: number, tint = 0xffffff): Rig {
   const legRight = limb(parts.legRight, LEG_SPLIT, HIP, RIGHT_HIP_X - LEG_SPLIT, 0)
   const armLeft = limb(parts.armLeft, ARM_EDGE, SHOULDER_Y, ARM_REACH[0] - ARM_EDGE, 0)
   const armRight = limb(parts.armRight, ARM_RIGHT_CUT, SHOULDER_Y, ARM_REACH[1] - ARM_RIGHT_CUT, 0)
-  body.addChild(legLeft, legRight, core, armLeft, armRight)
-  return { body, core, legLeft, legRight, armLeft, armRight, seed }
+  inner.addChild(legLeft, legRight, core, armLeft, armRight)
+  return { body, inner, facing: 'down', front: parts.core, back: parts.back, side: parts.side, legBase: scaleY, core, legLeft, legRight, armLeft, armRight, seed }
+}
+
+function face(rig: Rig, dx: number, dy: number) {
+  const facing: Facing = Math.abs(dy) > Math.abs(dx) ? (dy < 0 ? 'up' : 'down') : 'side'
+  if (facing === 'side') rig.body.scale.x = dx < 0 ? -1 : 1
+  else rig.body.scale.x = 1
+  rig.facing = facing
+  rig.core.texture = facing === 'up' ? rig.back : facing === 'side' ? rig.side : rig.front
+  rig.inner.scale.x = facing === 'side' ? 0.7 : 1
 }
 
 function pose(rig: Rig, walking: boolean, now: number) {
+  if (!walking && rig.facing !== 'down') face(rig, 0, 1)
   if (walking) {
     const swing = Math.sin(now / 110 + rig.seed)
-    rig.legLeft.rotation = swing * 0.5
-    rig.legRight.rotation = -swing * 0.5
-    rig.armLeft.rotation = -swing * 0.6
-    rig.armRight.rotation = swing * 0.6
+    if (rig.facing === 'side') {
+      rig.legLeft.rotation = swing * 0.38
+      rig.legRight.rotation = -swing * 0.38
+      rig.armLeft.rotation = -swing * 0.5
+      rig.armRight.rotation = swing * 0.5
+      rig.legLeft.scale.y = rig.legBase
+      rig.legRight.scale.y = rig.legBase
+    } else {
+      rig.legLeft.rotation = 0
+      rig.legRight.rotation = 0
+      rig.legLeft.scale.y = rig.legBase * (1 - 0.12 * Math.max(0, swing))
+      rig.legRight.scale.y = rig.legBase * (1 - 0.12 * Math.max(0, -swing))
+      rig.armLeft.rotation = -swing * 0.25
+      rig.armRight.rotation = swing * 0.25
+    }
     rig.body.y = -Math.abs(swing) * 4
     rig.body.rotation = swing * 0.03
     return
   }
   rig.legLeft.rotation = 0
   rig.legRight.rotation = 0
+  rig.legLeft.scale.y = rig.legBase
+  rig.legRight.scale.y = rig.legBase
   rig.armLeft.rotation = Math.sin(now / 700 + rig.seed) * 0.04
   rig.armRight.rotation = -Math.sin(now / 700 + rig.seed) * 0.04
   rig.body.rotation = 0
@@ -154,7 +214,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
       const floorTexture = new Texture({ source: background.source, frame: new Rectangle(770, 280, 200, 200) })
       const parts = textures.map(texture => cutParts(texture))
       const props = Object.fromEntries(Object.entries(PROPS).map(([name, [x, y, w, h]]) => [name, new Texture({ source: background.source, frame: new Rectangle(x, y, w, h) })])) as Record<keyof typeof PROPS, Texture>
-      sceneTextures = [deskTexture, floorTexture, ...Object.values(props), ...parts.flatMap(item => [item.core, item.legLeft, item.legRight, item.armLeft, item.armRight])]
+      sceneTextures = [deskTexture, floorTexture, ...Object.values(props), ...parts.flatMap(item => [item.back, item.side, item.core, item.legLeft, item.legRight, item.armLeft, item.armRight])]
       motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
       setLoadError(false)
       element.appendChild(app.canvas)
@@ -213,7 +273,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
           else if (distance <= step) walker.route.shift()
         }
         const walking = next.x !== here.x || next.y !== here.y
-        if (walking && Math.abs(next.x - here.x) > 0.01) playerRig.body.scale.x = next.x < here.x ? -1 : 1
+        if (walking) face(playerRig, next.x - here.x, next.y - here.y)
         walker.x = next.x
         walker.y = next.y
         pose(playerRig, walking, performance.now())
@@ -410,7 +470,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
             const walking = !reducedMotion && travelled < move.total
             if (walking) {
               const ahead = along(move.path, Math.min(move.total, travelled + 6))
-              if (Math.abs(ahead.x - at.x) > 0.5) move.rig.body.scale.x = ahead.x < at.x ? -1 : 1
+              if (Math.hypot(ahead.x - at.x, ahead.y - at.y) > 0.5) face(move.rig, ahead.x - at.x, ahead.y - at.y)
             }
             move.person.position.set(at.x, at.y)
             positions.current.set(move.id, at)
