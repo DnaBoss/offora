@@ -146,7 +146,7 @@ function face(rig: Rig, dx: number, dy: number) {
   else rig.body.scale.x = 1
   rig.facing = facing
   rig.core.texture = facing === 'up' ? rig.back : facing === 'side' ? rig.side : rig.front
-  rig.inner.scale.x = facing === 'side' ? 0.7 : 1
+  rig.inner.scale.x = 1
 }
 
 function pose(rig: Rig, walking: boolean, now: number) {
