@@ -225,9 +225,6 @@ export default function Office({ members, conversations, speaking, speech, onSel
         app.stage.x = viewWidth >= width ? (viewWidth - width) / 2 : -Math.max(0, Math.min(width - viewWidth, walker.x - viewWidth / 2))
         app.stage.y = viewHeight >= worldHeight ? (viewHeight - worldHeight) / 2 : -Math.max(0, Math.min(worldHeight - viewHeight, walker.y - viewHeight / 2))
         element.dataset.camera = `${Math.round(app.stage.x)},${Math.round(app.stage.y)}`
-        const room = element.closest('.office') as HTMLElement | null
-        room?.style.setProperty('--wx', `${app.stage.x}px`)
-        room?.style.setProperty('--wy', `${app.stage.y}px`)
       }
       app.ticker.add(walk)
       const redraw = () => {
