@@ -2,11 +2,20 @@ import { useEffect, useRef, useState } from 'react'
 import { Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Texture, TilingSprite } from 'pixi.js'
 import type { Conversation, Member } from './types'
 import { Grid, along, length, type Point, type Rect } from './navigation'
-import { layoutDesks } from './layout'
-import { HEAD_HEIGHT, HEAD_ITEMS, WALL_HEIGHT, makeArt, type PropKind } from './pixelart'
+import { layoutDesks, type Spot } from './layout'
 
 const WORLD_WIDTH = 1280
 const FIGURE_SIZE = 130
+const BACKGROUND_WIDTH = 1604
+const BACKGROUND_HEIGHT = 981
+const LEAVES = [[1066, 116, 70, 90], [1440, 20, 100, 90]]
+const HEAD_SOURCE_HEIGHT = 615
+const HEAD_HEIGHT = Math.round(HEAD_SOURCE_HEIGHT * 1280 / BACKGROUND_WIDTH)
+const HEAD_OBSTACLES: Rect[] = [{ x: 0, y: 0, w: 1280, h: 215 }, { x: 0, y: 215, w: 90, h: 400 }, { x: 1190, y: 215, w: 90, h: 400 }, { x: 96, y: 263, w: 115, h: 112 }, { x: 310, y: 287, w: 225, h: 165 }, { x: 862, y: 279, w: 84, h: 152 }, { x: 958, y: 315, w: 92, h: 80 }, { x: 1065, y: 279, w: 70, h: 152 }]
+
+function place([x, y, width, height]: number[]) {
+  return { left: `${x / BACKGROUND_WIDTH * 100}%`, top: `${y / BACKGROUND_HEIGHT * 100}%`, width: `${width / BACKGROUND_WIDTH * 100}%`, height: `${height / BACKGROUND_HEIGHT * 100}%` }
+}
 const HIP = 790
 const SOURCE_WIDTH = 1230
 const SOURCE_HEIGHT = 1278
@@ -21,6 +30,15 @@ const RIGHT_HIP_X = 676
 const ARM_REACH = [ARM_LEFT_CUT - 4, ARM_RIGHT_CUT + 4]
 const WALK_SPEED = 260
 const DESK_WIDTH = 130
+const PROPS: Record<Spot['kind'], [number, number, number, number, number]> = {
+  plantBig: [1120, 640, 100, 155, 0.75],
+  plantSmall: [298, 478, 72, 100, 0.8],
+  plantTall: [425, 645, 100, 128, 0.75],
+  shelf: [505, 735, 125, 105, 0.9],
+  cabinet: [1400, 120, 115, 95, 0.85],
+  lamp: [1535, 295, 55, 100, 0.9]
+}
+
 type Parts = { back: Texture, side: Texture, core: Texture, legLeft: Texture, legRight: Texture, armLeft: Texture, armRight: Texture }
 type Facing = 'down' | 'up' | 'side'
 type Rig = { body: Container, inner: Container, facing: Facing, front: Texture, back: Texture, side: Texture, legBase: number, core: Sprite, legLeft: Sprite, legRight: Sprite, armLeft: Sprite, armRight: Sprite, seed: number }
@@ -67,6 +85,22 @@ function turnedView(source: Texture, side: boolean): Texture {
       block(520, 496, 160, 32, hair, 0.18)
       block(578, 580, 64, 150, shirt, 0.06)
     }
+  }
+  return Texture.from(canvas)
+}
+
+function mirrored(source: Texture, x: number, y: number, w: number, h: number): Texture {
+  const canvas = document.createElement('canvas')
+  canvas.width = w * 2
+  canvas.height = h * 2
+  const context = canvas.getContext('2d')
+  const image = source.source.resource as CanvasImageSource
+  for (const [fx, fy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+    context?.save()
+    context?.translate(fx > 0 ? 0 : w * 2, fy > 0 ? 0 : h * 2)
+    context?.scale(fx, fy)
+    context?.drawImage(image, x, y, w, h, fx > 0 ? 0 : 0, 0, w, h)
+    context?.restore()
   }
   return Texture.from(canvas)
 }
@@ -192,10 +226,14 @@ export default function Office({ members, conversations, speaking, speech, onSel
       if (!active) { app.destroy(true); return }
       initialized = true
       const textures = await Promise.all(['/assets/worker-v1.png', '/assets/worker-v2.png', '/assets/worker-v3.png', '/assets/worker-v4.png', '/assets/worker-v5.png', '/assets/worker-v6.png'].map(path => Assets.load(path)))
+      const background = await Assets.load('/assets/office-background-v1.png')
       if (!active) return
-      const art = makeArt()
+      const deskTexture = new Texture({ source: background.source, frame: new Rectangle(932, 660, 205, 220) })
+      const floorTexture = mirrored(background, 790, 300, 240, 260)
+      const headTexture = new Texture({ source: background.source, frame: new Rectangle(0, 0, BACKGROUND_WIDTH, HEAD_SOURCE_HEIGHT) })
       const parts = textures.map(texture => cutParts(texture))
-      sceneTextures = [art.desk, art.floor, art.wall, ...Object.values(art.props), ...Object.values(art.head), ...parts.flatMap(item => [item.back, item.side, item.core, item.legLeft, item.legRight, item.armLeft, item.armRight])]
+      const props = Object.fromEntries(Object.entries(PROPS).map(([name, [x, y, w, h]]) => [name, new Texture({ source: background.source, frame: new Rectangle(x, y, w, h) })])) as Record<keyof typeof PROPS, Texture>
+      sceneTextures = [deskTexture, floorTexture, headTexture, ...Object.values(props), ...parts.flatMap(item => [item.back, item.side, item.core, item.legLeft, item.legRight, item.armLeft, item.armRight])]
       motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
       setLoadError(false)
       element.appendChild(app.canvas)
@@ -266,6 +304,9 @@ export default function Office({ members, conversations, speaking, speech, onSel
         app.stage.x = viewWidth >= width ? (viewWidth - width) / 2 : -Math.max(0, Math.min(width - viewWidth, walker.x - viewWidth / 2))
         app.stage.y = viewHeight >= worldHeight ? (viewHeight - worldHeight) / 2 : -Math.max(0, Math.min(worldHeight - viewHeight, walker.y - viewHeight / 2))
         element.dataset.camera = `${Math.round(app.stage.x)},${Math.round(app.stage.y)}`
+        const room = element.closest('.office') as HTMLElement | null
+        room?.style.setProperty('--wx', `${app.stage.x}px`)
+        room?.style.setProperty('--wy', `${app.stage.y}px`)
       }
       app.ticker.add(walk)
       const redraw = () => {
@@ -319,32 +360,19 @@ export default function Office({ members, conversations, speaking, speech, onSel
         world.current.height = height
         world.current.spawnY = Math.max(HEAD_HEIGHT + 40, height - 40)
         const deskTop = height - deskLayout.height
-        const floor = new TilingSprite({ texture: art.floor, width, height: height - WALL_HEIGHT })
-        floor.y = WALL_HEIGHT
+        const floor = new TilingSprite({ texture: floorTexture, width, height: height - HEAD_HEIGHT })
+        floor.y = HEAD_HEIGHT
         app.stage.addChild(floor)
-        const wall = new TilingSprite({ texture: art.wall, width, height: WALL_HEIGHT })
-        app.stage.addChild(wall)
-        const baseboard = new Graphics().rect(0, WALL_HEIGHT - 14, width, 14).fill(0x9a6b40).rect(0, WALL_HEIGHT - 14, width, 4).fill(0xb98757)
-        app.stage.addChild(baseboard)
-        obstacles.push({ x: 0, y: 0, w: width, h: WALL_HEIGHT + 8 })
-        const components: { kind: string, box: Rect, solid: boolean }[] = []
-        for (const item of HEAD_ITEMS) {
-          const sprite = new Sprite(art.head[item.kind])
+        const head = new Sprite(headTexture)
+        head.scale.set(width / BACKGROUND_WIDTH)
+        app.stage.addChild(head)
+        obstacles.push(...HEAD_OBSTACLES)
+        const prop = (name: keyof typeof PROPS, x: number, bottom: number, solid = true) => {
+          const sprite = new Sprite(props[name])
           sprite.anchor.set(0.5, 1)
-          sprite.position.set(item.x, item.bottom)
-          app.stage.addChild(sprite)
-          components.push({ kind: item.kind, box: { x: item.x - sprite.width / 2, y: item.bottom - sprite.height, w: sprite.width, h: sprite.height }, solid: item.foot > 0 })
-          if (item.foot > 0) {
-            const top = Math.max(WALL_HEIGHT + 8, item.bottom - sprite.height * item.foot)
-            obstacles.push({ x: item.x - sprite.width / 2 + 2, y: top, w: sprite.width - 4, h: item.bottom - top })
-          }
-        }
-        const prop = (name: PropKind, x: number, bottom: number, solid = true) => {
-          const sprite = new Sprite(art.props[name])
-          sprite.anchor.set(0.5, 1)
+          sprite.scale.set(PROPS[name][4])
           sprite.position.set(x, bottom)
           app.stage.addChild(sprite)
-          components.push({ kind: name, box: { x: x - sprite.width / 2, y: bottom - sprite.height, w: sprite.width, h: sprite.height }, solid })
           if (solid) obstacles.push({ x: x - sprite.width / 2 + 6, y: bottom - sprite.height / 2, w: sprite.width - 12, h: sprite.height / 2 })
         }
         for (const spot of deskLayout.spots) prop(spot.kind, spot.x, deskTop + spot.y + 45)
@@ -355,9 +383,8 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const x = seat.x
           const y = deskTop + seat.y
           obstacles.push({ x: x - DESK_WIDTH / 2, y: y - 123, w: DESK_WIDTH, h: 93 })
-          components.push({ kind: 'desk', box: { x: x - DESK_WIDTH / 2, y: y - 123, w: DESK_WIDTH, h: 93 }, solid: true })
           const desk = new Container({ x, y, eventMode: 'static', cursor: 'pointer' })
-          const deskImage = new Sprite(art.desk)
+          const deskImage = new Sprite(deskTexture)
           deskImage.anchor.set(0.5)
           deskImage.y = -53
           deskImage.width = 130
@@ -377,7 +404,6 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const grid = new Grid({ left: 65, right: width - 65, top: 90, bottom: Math.max(90, height - 60) }, obstacles)
         navigation.current = grid
         element.dataset.obstacles = JSON.stringify(obstacles)
-        element.dataset.components = JSON.stringify(components)
         members.filter(member => member.presence !== 'offline').forEach(member => {
           const index = seats.current.get(member.session_id) ?? 0
           const seat = deskLayout.desks[index] ?? { x: width / 2, y: 100 }
@@ -488,5 +514,5 @@ export default function Office({ members, conversations, speaking, speech, onSel
     })().catch(() => { if (active) setLoadError(true) })
     return () => { active = false; if (keyDown) window.removeEventListener('keydown', keyDown); if (keyUp) window.removeEventListener('keyup', keyUp); if (motionChanged) motionPreference?.removeEventListener('change', motionChanged); if (initialized) app.destroy(true); for (const texture of sceneTextures) texture.destroy(false); sceneTextures = [] }
   }, [members, conversations, speaking, speech, onSelect, onSelectConversation, pauseMotion, attempt])
-  return <div className="office-canvas"><div className="office-stage" ref={root} aria-hidden="true" />{loadError && <div className="office-error" role="alert"><span>辦公室畫面載入失敗</span><button onClick={() => { setLoadError(false); setAttempt(value => value + 1) }}>重新載入畫面</button></div>}</div>
+  return <div className="office-canvas"><div className={`office-fx${pauseMotion ? ' paused' : ''}`} aria-hidden="true">{LEAVES.map((box, index) => <i key={`l${index}`} className="leaf-sway" style={{ ...place(box), backgroundSize: `${BACKGROUND_WIDTH / box[2] * 100}% ${BACKGROUND_HEIGHT / box[3] * 100}%`, backgroundPosition: `${box[0] / (BACKGROUND_WIDTH - box[2]) * 100}% ${box[1] / (BACKGROUND_HEIGHT - box[3]) * 100}%`, animationDelay: `${index * -1.1}s` }} />)}</div><div className="office-stage" ref={root} aria-hidden="true" />{loadError && <div className="office-error" role="alert"><span>辦公室畫面載入失敗</span><button onClick={() => { setLoadError(false); setAttempt(value => value + 1) }}>重新載入畫面</button></div>}</div>
 }
