@@ -28,18 +28,13 @@ const RIGHT_HIP_X = 676
 const ARM_REACH = [ARM_LEFT_CUT - 4, ARM_RIGHT_CUT + 4]
 const WALK_SPEED = 260
 const DESK_WIDTH = 130
-const LOUNGE_STRIDE = 150
-const LOUNGE_HEADER = 90
-const LOUNGE_WIDTH = 760
-const PROPS: Record<Spot['kind'] | 'sofaSet' | 'frame', [number, number, number, number, number]> = {
+const PROPS: Record<Spot['kind'], [number, number, number, number, number]> = {
   plantBig: [1120, 640, 100, 155, 0.75],
   plantSmall: [298, 478, 72, 100, 0.8],
   plantTall: [425, 645, 100, 128, 0.75],
   shelf: [505, 735, 125, 105, 0.9],
   cabinet: [1400, 120, 115, 95, 0.85],
-  lamp: [1535, 295, 55, 100, 0.9],
-  sofaSet: [1050, 290, 420, 310, 1],
-  frame: [1345, 35, 85, 92, 0.8]
+  lamp: [1535, 295, 55, 100, 0.9]
 }
 
 type Parts = { core: Texture, legLeft: Texture, legRight: Texture, armLeft: Texture, armRight: Texture }
@@ -230,6 +225,9 @@ export default function Office({ members, conversations, speaking, speech, onSel
         app.stage.x = viewWidth >= width ? (viewWidth - width) / 2 : -Math.max(0, Math.min(width - viewWidth, walker.x - viewWidth / 2))
         app.stage.y = viewHeight >= worldHeight ? (viewHeight - worldHeight) / 2 : -Math.max(0, Math.min(worldHeight - viewHeight, walker.y - viewHeight / 2))
         element.dataset.camera = `${Math.round(app.stage.x)},${Math.round(app.stage.y)}`
+        const room = element.closest('.office') as HTMLElement | null
+        room?.style.setProperty('--wx', `${app.stage.x}px`)
+        room?.style.setProperty('--wy', `${app.stage.y}px`)
       }
       app.ticker.add(walk)
       const redraw = () => {
@@ -237,7 +235,6 @@ export default function Office({ members, conversations, speaking, speech, onSel
         app.ticker.stop()
         app.ticker.remove(animate)
         const width = WORLD_WIDTH
-        const loungeColumns = Math.max(1, Math.floor(LOUNGE_WIDTH / LOUNGE_STRIDE))
         const layout = groupLayout(width, conversations)
         const groupColumns = layout.columns
         const speakers = members.filter(member => member.presence !== 'offline' && speaking.includes(member.session_id) && !conversations.some(item => item.participants.includes(member.session_id)))
@@ -279,14 +276,11 @@ export default function Office({ members, conversations, speaking, speech, onSel
         }
         const totalSeats = Math.max(0, ...[...seats.current.values()].map(value => value + 1))
         const deskLayout = layoutDesks(totalSeats, width)
-        const offline = members.filter(member => member.presence === 'offline')
-        const loungeHeight = offline.length ? LOUNGE_HEADER + Math.max(Math.ceil(offline.length / loungeColumns) * LOUNGE_STRIDE, 330) + 20 : 0
         const speakerRows = Math.ceil(speakers.length / speakersPerRow)
-        const height = Math.max(440, 280 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRows * 190 + deskLayout.height + loungeHeight)
+        const height = Math.max(440, 280 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRows * 190 + deskLayout.height)
         world.current.height = height
-        world.current.spawnY = Math.max(100, height - loungeHeight - 40)
-        const loungeTop = height - loungeHeight
-        const deskTop = loungeTop - deskLayout.height
+        world.current.spawnY = Math.max(100, height - 40)
+        const deskTop = height - deskLayout.height
         if (deskLayout.height) {
           const floor = new TilingSprite({ texture: floorTexture, width, height: deskLayout.height })
           floor.y = deskTop
@@ -301,25 +295,6 @@ export default function Office({ members, conversations, speaking, speech, onSel
           if (solid) obstacles.push({ x: x - sprite.width / 2 + 6, y: bottom - sprite.height / 2, w: sprite.width - 12, h: sprite.height / 2 })
         }
         for (const spot of deskLayout.spots) prop(spot.kind, spot.x, deskTop + spot.y + 45)
-        if (offline.length) {
-          const floor = new TilingSprite({ texture: floorTexture, width, height: loungeHeight })
-          floor.y = loungeTop
-          app.stage.addChild(floor)
-          const sofa = new Sprite(props.sofaSet)
-          sofa.position.set(width - sofa.width - 30, loungeTop + LOUNGE_HEADER + 10)
-          app.stage.addChild(sofa)
-          obstacles.push({ x: sofa.x + 20, y: sofa.y + 40, w: sofa.width - 40, h: sofa.height - 70 })
-          const wall = new Graphics()
-          for (const [from, to] of [[0, width / 2 - 100], [width / 2 + 100, width]]) wall.rect(from, loungeTop, to - from, LOUNGE_HEADER).fill({ color: 0xe8d8b8 }).rect(from, loungeTop + LOUNGE_HEADER - 8, to - from, 8).fill({ color: 0x866b49 })
-          wall.rect(width / 2 - 106, loungeTop, 6, LOUNGE_HEADER).rect(width / 2 + 100, loungeTop, 6, LOUNGE_HEADER).fill({ color: 0x5b3f24 })
-          app.stage.addChild(wall)
-          for (const x of [220, 1000]) { const frame = new Sprite(props.frame); frame.anchor.set(0.5, 0); frame.scale.set(PROPS.frame[4]); frame.position.set(x, loungeTop + 6); app.stage.addChild(frame) }
-          obstacles.push({ x: 0, y: loungeTop, w: width / 2 - 100, h: LOUNGE_HEADER }, { x: width / 2 + 100, y: loungeTop, w: width / 2 - 100, h: LOUNGE_HEADER })
-          const sign = new Text({ text: `休息室（離線 ${offline.length} 人）`, style: { fontFamily: 'sans-serif', fontSize: 15, fontWeight: 'bold', fill: '#fff8e6', stroke: { color: '#5b3f24', width: 4 } } })
-          sign.anchor.set(0.5)
-          sign.position.set(width / 2 - 260, loungeTop + 40)
-          app.stage.addChild(sign)
-        }
         for (const member of members) {
           if (member.presence === 'offline') continue
           const index = seats.current.get(member.session_id) ?? 0
@@ -348,11 +323,10 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const grid = new Grid({ left: 65, right: width - 65, top: 90, bottom: Math.max(90, height - 60) }, obstacles)
         navigation.current = grid
         element.dataset.obstacles = JSON.stringify(obstacles)
-        element.dataset.lounge = String(Math.round(loungeTop))
-        members.forEach(member => {
+        members.filter(member => member.presence !== 'offline').forEach(member => {
           const index = seats.current.get(member.session_id) ?? 0
           const seat = deskLayout.desks[index] ?? { x: width / 2, y: 100 }
-          const discussionIndex = member.presence === "offline" ? -1 : conversations.findIndex(item => item.participants.includes(member.session_id))
+          const discussionIndex = conversations.findIndex(item => item.participants.includes(member.session_id))
           const discussion = conversations[discussionIndex]
           const isSpeaking = !discussion && member.presence !== 'offline' && speaking.includes(member.session_id)
           const slot = discussion ? discussionSlots.current.get(discussion.conversation_id) ?? 0 : 0
@@ -360,20 +334,18 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const participantIndex = discussion ? discussion.participants.indexOf(member.session_id) : 0
           const participantRow = Math.floor(participantIndex / layout.perRow)
           const rowCount = discussion ? Math.min(layout.perRow, discussion.participants.length - participantRow * layout.perRow) : 1
-          const loungeIndex = offline.indexOf(member)
           const speakerIndex = speakers.findIndex(item => item.session_id === member.session_id)
           const speakerRow = Math.floor(speakerIndex / speakersPerRow)
           const speakersInRow = Math.min(speakersPerRow, speakers.length - speakerRow * speakersPerRow)
-          const x = discussion ? Math.max(75, Math.min(width - 75, groupX(slot) + (participantIndex % layout.perRow - (rowCount - 1) / 2) * 160)) : isSpeaking ? width * 0.5 + (speakerIndex % speakersPerRow - (speakersInRow - 1) / 2) * 160 : member.presence === 'offline' ? 20 + (loungeIndex % loungeColumns + 0.5) * LOUNGE_STRIDE : seat.x
-          const y = discussion ? 205 + Math.floor(slot / groupColumns) * layout.stride + participantRow * 190 : isSpeaking ? 150 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRow * 190 : member.presence === 'offline' ? loungeTop + LOUNGE_HEADER + Math.floor(loungeIndex / loungeColumns) * LOUNGE_STRIDE + 60 : deskTop + seat.y
+          const x = discussion ? Math.max(75, Math.min(width - 75, groupX(slot) + (participantIndex % layout.perRow - (rowCount - 1) / 2) * 160)) : isSpeaking ? width * 0.5 + (speakerIndex % speakersPerRow - (speakersInRow - 1) / 2) * 160 : seat.x
+          const y = discussion ? 205 + Math.floor(slot / groupColumns) * layout.stride + participantRow * 190 : isSpeaking ? 150 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRow * 190 : deskTop + seat.y
           const previous = positions.current.get(member.session_id) ?? { x, y }
           const person = new Container({ x: previous.x, y: previous.y, eventMode: 'static', cursor: 'pointer' })
           const look = appearances.current.get(member.session_id) ?? 0
           const rig = buildRig(parts[look], index * 1.7)
-          rig.body.alpha = member.presence === 'offline' ? 0.8 : 1
           person.addChild(rig.body)
           const activity = discussionCount > 1 ? `（${discussionCount} 場）` : isSpeaking ? '（剛發話）' : ''
-          const presence = member.presence === 'offline' ? '（離線）' : member.presence === 'reconnecting' ? '（重連中）' : ''
+          const presence = member.presence === 'reconnecting' ? '（重連中）' : ''
           const label = new Text({ text: displayName(member, index), style: { fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold', fill: '#193241', stroke: { color: '#fff8e6', width: 4 } } })
           label.anchor.set(0.5, 0)
           if (label.width > 145) label.scale.set(145 / label.width)
