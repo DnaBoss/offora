@@ -16,19 +16,6 @@ const HEAD_OBSTACLES: Rect[] = [{ x: 0, y: 0, w: 1280, h: 215 }, { x: 0, y: 215,
 function place([x, y, width, height]: number[]) {
   return { left: `${x / BACKGROUND_WIDTH * 100}%`, top: `${y / BACKGROUND_HEIGHT * 100}%`, width: `${width / BACKGROUND_WIDTH * 100}%`, height: `${height / BACKGROUND_HEIGHT * 100}%` }
 }
-const HIP = 790
-const SOURCE_WIDTH = 1230
-const SOURCE_HEIGHT = 1278
-const SHOULDER_Y = 640
-const ARM_BOTTOM = 850
-const ARM_LEFT_CUT = 482
-const ARM_RIGHT_CUT = 722
-const ARM_EDGE = 400
-const LEG_SPLIT = 615
-const LEFT_HIP_X = 560
-const RIGHT_HIP_X = 676
-const ARM_REACH = [ARM_LEFT_CUT - 4, ARM_RIGHT_CUT + 4]
-const WALK_SPEED = 260
 const DESK_WIDTH = 130
 const PROPS: Record<Spot['kind'], [number, number, number, number, number]> = {
   plantBig: [1120, 640, 100, 155, 0.75],
@@ -38,56 +25,18 @@ const PROPS: Record<Spot['kind'], [number, number, number, number, number]> = {
   cabinet: [1400, 120, 115, 95, 0.85],
   lamp: [1535, 295, 55, 100, 0.9]
 }
+const FRAME_WIDTH = 160
+const FRAME_HEIGHT = 256
+const FIGURE_PIXELS = 236
+const FEET_Y = 68
+const WALK_SEQUENCE = [0, 1, 2, 1]
+const WALK_STEP_MS = 130
+const WALK_SPEED = 260
 
-type Parts = { back: Texture, side: Texture, core: Texture, legLeft: Texture, legRight: Texture, armLeft: Texture, armRight: Texture }
 type Facing = 'down' | 'up' | 'side'
-type Rig = { body: Container, inner: Container, facing: Facing, front: Texture, back: Texture, side: Texture, legBase: number, core: Sprite, legLeft: Sprite, legRight: Sprite, armLeft: Sprite, armRight: Sprite, seed: number }
+type Rig = { body: Container, sprite: Sprite, facing: Facing, frames: Record<Facing, Texture[]>, seed: number }
 
-function bake(source: Texture, x: number, y: number, w: number, h: number, erase = true): Texture {
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const context = canvas.getContext('2d')
-  const image = source.source.resource as CanvasImageSource
-  context?.drawImage(image, x, y, w, h, 0, 0, w, h)
-  if (erase) {
-    context?.clearRect(0 - x, SHOULDER_Y - y, ARM_LEFT_CUT, ARM_BOTTOM - SHOULDER_Y)
-    context?.clearRect(ARM_RIGHT_CUT - x, SHOULDER_Y - y, SOURCE_WIDTH - ARM_RIGHT_CUT, ARM_BOTTOM - SHOULDER_Y)
-  }
-  return Texture.from(canvas)
-}
-
-function turnedView(source: Texture, side: boolean): Texture {
-  const canvas = document.createElement('canvas')
-  canvas.width = SOURCE_WIDTH
-  canvas.height = HIP
-  const context = canvas.getContext('2d')
-  context?.drawImage(source.source.resource as CanvasImageSource, 0, 0, SOURCE_WIDTH, HIP, 0, 0, SOURCE_WIDTH, HIP)
-  const average = (x: number, y: number, w: number, h: number) => {
-    const data = context?.getImageData(x, y, w, h).data ?? new Uint8ClampedArray(4)
-    let r = 0, g = 0, b = 0, n = 0
-    for (let i = 0; i < data.length; i += 4) if (data[i + 3] > 200) { r += data[i]; g += data[i + 1]; b += data[i + 2]; n++ }
-    return n ? [r / n, g / n, b / n] : [40, 30, 30]
-  }
-  const hair = average(540, 230, 120, 60)
-  const shirt = average(500, 620, 60, 60)
-  const block = (x: number, y: number, w: number, h: number, color: number[], jitter: number) => {
-    for (let by = y; by < y + h; by += 16) for (let bx = x; bx < x + w; bx += 16) {
-      const shade = 1 + (Math.sin(bx * 12.9898 + by * 78.233) * 43758.5453 % 1) * jitter
-      context!.fillStyle = `rgb(${Math.round(color[0] * shade)},${Math.round(color[1] * shade)},${Math.round(color[2] * shade)})`
-      context!.fillRect(bx, by, 16, 16)
-    }
-  }
-  if (context) {
-    if (side) block(496, 336, 96, 192, hair, 0.18)
-    else {
-      block(496, 336, 208, 160, hair, 0.18)
-      block(520, 496, 160, 32, hair, 0.18)
-      block(578, 580, 64, 150, shirt, 0.06)
-    }
-  }
-  return Texture.from(canvas)
-}
+const FACING_ROW: Record<Facing, number> = { down: 0, up: 1, side: 2 }
 
 function mirrored(source: Texture, x: number, y: number, w: number, h: number): Texture {
   const canvas = document.createElement('canvas')
@@ -105,80 +54,37 @@ function mirrored(source: Texture, x: number, y: number, w: number, h: number): 
   return Texture.from(canvas)
 }
 
-function cutParts(texture: Texture): Parts {
-  return {
-    back: turnedView(texture, false),
-    side: turnedView(texture, true),
-    core: bake(texture, 0, 0, SOURCE_WIDTH, HIP),
-    legLeft: bake(texture, 0, HIP, LEG_SPLIT, SOURCE_HEIGHT - HIP),
-    legRight: bake(texture, LEG_SPLIT, HIP, SOURCE_WIDTH - LEG_SPLIT, SOURCE_HEIGHT - HIP),
-    armLeft: bake(texture, ARM_EDGE, SHOULDER_Y, ARM_LEFT_CUT - ARM_EDGE, ARM_BOTTOM - SHOULDER_Y, false),
-    armRight: bake(texture, ARM_RIGHT_CUT, SHOULDER_Y, SOURCE_WIDTH - ARM_RIGHT_CUT, ARM_BOTTOM - SHOULDER_Y, false)
-  }
+function cutFrames(source: Texture): Record<Facing, Texture[]> {
+  const row = (index: number) => [0, 1, 2].map(column => new Texture({ source: source.source, frame: new Rectangle(column * FRAME_WIDTH, index * FRAME_HEIGHT, FRAME_WIDTH, FRAME_HEIGHT) }))
+  return { down: row(FACING_ROW.down), up: row(FACING_ROW.up), side: row(FACING_ROW.side) }
 }
 
-function buildRig(parts: Parts, seed: number, tint = 0xffffff): Rig {
-  const scaleX = FIGURE_SIZE / SOURCE_WIDTH
-  const scaleY = FIGURE_SIZE / SOURCE_HEIGHT
+function buildRig(frames: Record<Facing, Texture[]>, seed: number, tint = 0xffffff): Rig {
   const body = new Container()
-  const inner = new Container()
-  body.addChild(inner)
-  const limb = (texture: Texture, originX: number, originY: number, pivotX: number, pivotY: number) => {
-    const sprite = new Sprite(texture)
-    sprite.pivot.set(pivotX, pivotY)
-    sprite.scale.set(scaleX, scaleY)
-    sprite.position.set((originX + pivotX - SOURCE_WIDTH / 2) * scaleX, (originY + pivotY - SOURCE_HEIGHT / 2) * scaleY)
-    sprite.tint = tint
-    return sprite
-  }
-  const core = limb(parts.core, 0, 0, 0, 0)
-  const legLeft = limb(parts.legLeft, 0, HIP, LEFT_HIP_X, 0)
-  const legRight = limb(parts.legRight, LEG_SPLIT, HIP, RIGHT_HIP_X - LEG_SPLIT, 0)
-  const armLeft = limb(parts.armLeft, ARM_EDGE, SHOULDER_Y, ARM_REACH[0] - ARM_EDGE, 0)
-  const armRight = limb(parts.armRight, ARM_RIGHT_CUT, SHOULDER_Y, ARM_REACH[1] - ARM_RIGHT_CUT, 0)
-  inner.addChild(legLeft, legRight, core, armLeft, armRight)
-  return { body, inner, facing: 'down', front: parts.core, back: parts.back, side: parts.side, legBase: scaleY, core, legLeft, legRight, armLeft, armRight, seed }
+  const sprite = new Sprite(frames.down[1])
+  sprite.anchor.set(0.5, 1)
+  sprite.scale.set(FIGURE_SIZE / FIGURE_PIXELS)
+  sprite.y = FEET_Y
+  sprite.tint = tint
+  body.addChild(sprite)
+  return { body, sprite, facing: 'down', frames, seed }
 }
 
 function face(rig: Rig, dx: number, dy: number) {
   const facing: Facing = Math.abs(dy) > Math.abs(dx) ? (dy < 0 ? 'up' : 'down') : 'side'
-  if (facing === 'side') rig.body.scale.x = dx < 0 ? -1 : 1
-  else rig.body.scale.x = 1
+  rig.body.scale.x = facing === 'side' && dx < 0 ? -1 : 1
   rig.facing = facing
-  rig.core.texture = facing === 'up' ? rig.back : facing === 'side' ? rig.side : rig.front
-  rig.inner.scale.x = 1
 }
 
 function pose(rig: Rig, walking: boolean, now: number) {
   if (!walking && rig.facing !== 'down') face(rig, 0, 1)
   if (walking) {
-    const swing = Math.sin(now / 110 + rig.seed)
-    if (rig.facing === 'side') {
-      rig.legLeft.rotation = swing * 0.38
-      rig.legRight.rotation = -swing * 0.38
-      rig.armLeft.rotation = -swing * 0.5
-      rig.armRight.rotation = swing * 0.5
-      rig.legLeft.scale.y = rig.legBase
-      rig.legRight.scale.y = rig.legBase
-    } else {
-      rig.legLeft.rotation = 0
-      rig.legRight.rotation = 0
-      rig.legLeft.scale.y = rig.legBase * (1 - 0.12 * Math.max(0, swing))
-      rig.legRight.scale.y = rig.legBase * (1 - 0.12 * Math.max(0, -swing))
-      rig.armLeft.rotation = -swing * 0.25
-      rig.armRight.rotation = swing * 0.25
-    }
-    rig.body.y = -Math.abs(swing) * 4
-    rig.body.rotation = swing * 0.03
+    const step = Math.floor(now / WALK_STEP_MS + rig.seed) % WALK_SEQUENCE.length
+    rig.sprite.texture = rig.frames[rig.facing][WALK_SEQUENCE[step]]
+    rig.body.y = step % 2 === 0 ? 0 : -2
     return
   }
-  rig.legLeft.rotation = 0
-  rig.legRight.rotation = 0
-  rig.legLeft.scale.y = rig.legBase
-  rig.legRight.scale.y = rig.legBase
-  rig.armLeft.rotation = Math.sin(now / 700 + rig.seed) * 0.04
-  rig.armRight.rotation = -Math.sin(now / 700 + rig.seed) * 0.04
-  rig.body.rotation = 0
+  rig.sprite.texture = rig.frames.down[1]
   rig.body.y = Math.sin(now / 450 + rig.seed) * 1.5
 }
 
@@ -225,15 +131,15 @@ export default function Office({ members, conversations, speaking, speech, onSel
       await app.init({ backgroundAlpha: 0, resizeTo: element, antialias: false, resolution: window.devicePixelRatio || 1, autoDensity: true })
       if (!active) { app.destroy(true); return }
       initialized = true
-      const textures = await Promise.all(['/assets/worker-v1.png', '/assets/worker-v2.png', '/assets/worker-v3.png', '/assets/worker-v4.png', '/assets/worker-v5.png', '/assets/worker-v6.png'].map(path => Assets.load(path)))
+      const textures = await Promise.all([1, 2, 3, 4, 5, 6].map(number => `/assets/people-v${number}.png`).map(path => Assets.load(path)))
       const background = await Assets.load('/assets/office-background-v1.png')
       if (!active) return
       const deskTexture = new Texture({ source: background.source, frame: new Rectangle(932, 660, 205, 220) })
       const floorTexture = mirrored(background, 790, 300, 240, 260)
       const headTexture = new Texture({ source: background.source, frame: new Rectangle(0, 0, BACKGROUND_WIDTH, HEAD_SOURCE_HEIGHT) })
-      const parts = textures.map(texture => cutParts(texture))
+      const parts = textures.map(texture => cutFrames(texture))
       const props = Object.fromEntries(Object.entries(PROPS).map(([name, [x, y, w, h]]) => [name, new Texture({ source: background.source, frame: new Rectangle(x, y, w, h) })])) as Record<keyof typeof PROPS, Texture>
-      sceneTextures = [deskTexture, floorTexture, headTexture, ...Object.values(props), ...parts.flatMap(item => [item.back, item.side, item.core, item.legLeft, item.legRight, item.armLeft, item.armRight])]
+      sceneTextures = [deskTexture, floorTexture, headTexture, ...Object.values(props), ...parts.flatMap(item => [...item.down, ...item.up, ...item.side])]
       motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
       setLoadError(false)
       element.appendChild(app.canvas)
@@ -241,7 +147,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
       const playerRig = buildRig(parts[5], 3.1, 0xbfe3ff)
       const playerLabel = new Text({ text: '你（觀察者）', style: { fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold', fill: '#193241', stroke: { color: '#bfe3ff', width: 4 } } })
       playerLabel.anchor.set(0.5, 0)
-      playerLabel.y = 47
+      playerLabel.y = 70
       player.addChild(playerRig.body, playerLabel)
       const walker = { x: -1, y: -1, route: [] as Point[] }
       const pressed = new Set<string>()
@@ -430,7 +336,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const label = new Text({ text: displayName(member, index), style: { fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold', fill: '#193241', stroke: { color: '#fff8e6', width: 4 } } })
           label.anchor.set(0.5, 0)
           if (label.width > 145) label.scale.set(145 / label.width)
-          label.y = 47
+          label.y = 70
           person.addChild(label)
           if (activity || presence) {
             const status = new Text({ text: `${activity}${presence}`, style: { fontFamily: 'sans-serif', fontSize: 11, fontWeight: 'bold', fill: '#193241', stroke: { color: '#fff8e6', width: 4 } } })

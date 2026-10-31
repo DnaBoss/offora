@@ -1,0 +1,13 @@
+{
+ "date": "2026-11-01",
+ "tool": "built-in image_gen (codex exec)",
+ "note": "3x3 sheet front/back/side x 3 walk frames, green key",
+ "sha256": {
+  "sheet-v1.png": "08e52fe5288bb84db0176a49042377d448b110ed7047e573a21a9d313406aeef",
+  "sheet-v2.png": "812fb8c0a8c51df42fd4db0492c9fc3e13b799c23d7d8bbb8cdef8587f772884",
+  "sheet-v3.png": "c9a074b965d87712272a5edc89992aad50b369e90dfaed43950806f7d239499b",
+  "sheet-v4.png": "9b9b02370571745fcb1076abd3a4dcf77c68c95f626a31b6756f5b72f16e9a30",
+  "sheet-v5.png": "c1e4f79b68974733068c2b244d8a1ab53c83465c69fd7656dd4c93f3bbe76c2a",
+  "sheet-v6.png": "8e9a0e963e5355b6fa754f3381dc5bcd32871cce966a563af8491904902db824"
+ }
+}
