@@ -11,19 +11,19 @@ const BACKGROUND_HEIGHT = 981
 const LEAVES = [[1066, 116, 70, 90], [1440, 20, 100, 90]]
 const HEAD_SOURCE_HEIGHT = 615
 const HEAD_HEIGHT = Math.round(HEAD_SOURCE_HEIGHT * 1280 / BACKGROUND_WIDTH)
-const HEAD_OBSTACLES: Rect[] = [{ x: 0, y: 0, w: 1280, h: 215 }, { x: 0, y: 215, w: 90, h: 400 }, { x: 1190, y: 215, w: 90, h: 400 }, { x: 96, y: 263, w: 115, h: 112 }, { x: 310, y: 287, w: 225, h: 165 }, { x: 862, y: 279, w: 84, h: 152 }, { x: 958, y: 315, w: 92, h: 80 }, { x: 1065, y: 279, w: 70, h: 152 }]
+const HEAD_OBSTACLES: Rect[] = [{ x: 0, y: 0, w: 1280, h: 215 }, { x: 0, y: 215, w: 90, h: 400 }, { x: 1190, y: 215, w: 90, h: 400 }, { x: 96, y: 263, w: 115, h: 112 }, { x: 90, y: 400, w: 51, h: 69 }, { x: 234, y: 378, w: 59, h: 80 }, { x: 310, y: 287, w: 225, h: 165 }, { x: 863, y: 215, w: 58, h: 64 }, { x: 862, y: 279, w: 84, h: 184 }, { x: 948, y: 410, w: 48, h: 53 }, { x: 958, y: 315, w: 92, h: 80 }, { x: 1065, y: 279, w: 70, h: 152 }, { x: 1100, y: 236, w: 62, h: 43 }]
 
 function place([x, y, width, height]: number[]) {
   return { left: `${x / BACKGROUND_WIDTH * 100}%`, top: `${y / BACKGROUND_HEIGHT * 100}%`, width: `${width / BACKGROUND_WIDTH * 100}%`, height: `${height / BACKGROUND_HEIGHT * 100}%` }
 }
-const DESK_WIDTH = 130
-const PROPS: Record<Spot['kind'], [number, number, number, number, number]> = {
-  plantBig: [1120, 640, 100, 155, 0.75],
-  plantSmall: [298, 478, 72, 100, 0.8],
-  plantTall: [425, 645, 100, 128, 0.75],
-  shelf: [505, 735, 125, 105, 0.9],
-  cabinet: [1400, 120, 115, 95, 0.85],
-  lamp: [1535, 295, 55, 100, 0.9]
+const DESK_WIDTH = 138
+const PROPS: Record<Spot['kind'], [string, number]> = {
+  plantBig: ['plant-big', 116],
+  plantSmall: ['plant-small', 80],
+  plantTall: ['plant-big', 96],
+  shelf: ['shelf', 95],
+  cabinet: ['cabinet', 85],
+  lamp: ['lamp', 95]
 }
 const FRAME_WIDTH = 160
 const FRAME_HEIGHT = 256
@@ -37,22 +37,6 @@ type Facing = 'down' | 'up' | 'side'
 type Rig = { body: Container, sprite: Sprite, facing: Facing, frames: Record<Facing, Texture[]>, seed: number }
 
 const FACING_ROW: Record<Facing, number> = { down: 0, up: 1, side: 2 }
-
-function mirrored(source: Texture, x: number, y: number, w: number, h: number): Texture {
-  const canvas = document.createElement('canvas')
-  canvas.width = w * 2
-  canvas.height = h * 2
-  const context = canvas.getContext('2d')
-  const image = source.source.resource as CanvasImageSource
-  for (const [fx, fy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
-    context?.save()
-    context?.translate(fx > 0 ? 0 : w * 2, fy > 0 ? 0 : h * 2)
-    context?.scale(fx, fy)
-    context?.drawImage(image, x, y, w, h, fx > 0 ? 0 : 0, 0, w, h)
-    context?.restore()
-  }
-  return Texture.from(canvas)
-}
 
 function cutFrames(source: Texture): Record<Facing, Texture[]> {
   const row = (index: number) => [0, 1, 2].map(column => new Texture({ source: source.source, frame: new Rectangle(column * FRAME_WIDTH, index * FRAME_HEIGHT, FRAME_WIDTH, FRAME_HEIGHT) }))
@@ -133,13 +117,13 @@ export default function Office({ members, conversations, speaking, speech, onSel
       initialized = true
       const textures = await Promise.all([1, 2, 3, 4, 5, 6].map(number => `/assets/people-v${number}.png`).map(path => Assets.load(path)))
       const background = await Assets.load('/assets/office-background-v1.png')
+      const floorTexture = await Assets.load('/assets/floor-v1.png')
       if (!active) return
-      const deskTexture = new Texture({ source: background.source, frame: new Rectangle(932, 660, 205, 220) })
-      const floorTexture = mirrored(background, 790, 300, 240, 260)
+      const deskTexture = await Assets.load('/assets/furniture-v1/desk.png')
       const headTexture = new Texture({ source: background.source, frame: new Rectangle(0, 0, BACKGROUND_WIDTH, HEAD_SOURCE_HEIGHT) })
       const parts = textures.map(texture => cutFrames(texture))
-      const props = Object.fromEntries(Object.entries(PROPS).map(([name, [x, y, w, h]]) => [name, new Texture({ source: background.source, frame: new Rectangle(x, y, w, h) })])) as Record<keyof typeof PROPS, Texture>
-      sceneTextures = [deskTexture, floorTexture, headTexture, ...Object.values(props), ...parts.flatMap(item => [...item.down, ...item.up, ...item.side])]
+      const props = Object.fromEntries(await Promise.all(Object.entries(PROPS).map(async ([name, [file]]) => [name, await Assets.load(`/assets/furniture-v1/${file}.png`)]))) as Record<keyof typeof PROPS, Texture>
+      sceneTextures = [headTexture, ...parts.flatMap(item => [...item.down, ...item.up, ...item.side])]
       motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
       setLoadError(false)
       element.appendChild(app.canvas)
@@ -276,7 +260,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const prop = (name: keyof typeof PROPS, x: number, bottom: number, solid = true) => {
           const sprite = new Sprite(props[name])
           sprite.anchor.set(0.5, 1)
-          sprite.scale.set(PROPS[name][4])
+          sprite.scale.set(PROPS[name][1] / props[name].height)
           sprite.position.set(x, bottom)
           app.stage.addChild(sprite)
           if (solid) obstacles.push({ x: x - sprite.width / 2 + 6, y: bottom - sprite.height / 2, w: sprite.width - 12, h: sprite.height / 2 })
@@ -288,13 +272,12 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const seat = deskLayout.desks[index]
           const x = seat.x
           const y = deskTop + seat.y
-          obstacles.push({ x: x - DESK_WIDTH / 2, y: y - 123, w: DESK_WIDTH, h: 93 })
+          obstacles.push({ x: x - DESK_WIDTH / 2, y: y - 88, w: DESK_WIDTH, h: 58 })
           const desk = new Container({ x, y, eventMode: 'static', cursor: 'pointer' })
           const deskImage = new Sprite(deskTexture)
-          deskImage.anchor.set(0.5)
-          deskImage.y = -53
-          deskImage.width = 130
-          deskImage.height = 140
+          deskImage.anchor.set(0.5, 1)
+          deskImage.y = 17
+          deskImage.scale.set(DESK_WIDTH / deskTexture.width)
           desk.addChild(deskImage)
           const away = speaking.includes(member.session_id) || conversations.some(item => item.participants.includes(member.session_id))
           if (away) {
