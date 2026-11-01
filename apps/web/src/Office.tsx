@@ -3,7 +3,7 @@ import { Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Text
 import type { Conversation, Member } from './types'
 import { Grid, along, length, type Point, type Rect } from './navigation'
 import { hash } from './layout'
-import { SCENE_PROPS, OFFICE_PROPS, footprint, WALL_HEIGHT, WALK_LIMIT_TOP, BAY_WIDTH, ROOM_TOP, ROOM_BOTTOM, WALL_THICK, ZOOM, BENCH_MIN_ROWS, benchRow, benchItems, sceneItems, stripBottom, type SceneName, type SeatFacing, type RoomKind } from './scene'
+import { SCENE_PROPS, OFFICE_PROPS, footprint, WALL_HEIGHT, WALK_LIMIT_TOP, BAY_WIDTH, ROOM_TOP, ROOM_BOTTOM, WALL_THICK, ZOOM, BENCH_MIN_ROWS, benchRow, benchItems, sceneItems, stripBottom, standPoint, chairAt, type BenchSeat, type SceneName, type SeatFacing, type RoomKind } from './scene'
 
 const SIZES = [1920, 2560, 3840, 5120, 7680]
 const DEFAULT_SIZE = 3840
@@ -59,11 +59,10 @@ function pose(rig: Rig, walking: boolean, now: number) {
     rig.body.removeChild(rig.cut)
   }
   if (rig.seated && !walking) {
-    const typing = Math.floor(now / 260 + rig.seed) % 2 === 0 ? 0 : 2
     rig.facing = rig.sit === 'up' || rig.sit === 'down' ? rig.sit : 'side'
     rig.body.scale.x = rig.sit === 'left' ? -1 : 1
-    rig.sprite.texture = rig.frames[rig.facing][typing]
-    rig.body.y = 0
+    rig.sprite.texture = rig.frames[rig.facing][1]
+    rig.body.y = Math.floor(now / 900 + rig.seed) % 2 === 0 ? 0 : -1
     return
   }
   if (!walking && rig.facing !== 'down') face(rig, 0, 1)
@@ -101,6 +100,8 @@ export default function Office({ members, conversations, speaking, speech, onSel
   const world = useRef({ height: 440, spawnY: 340, width: size })
   const positions = useRef(new Map<string, { x: number, y: number }>())
   const seats = useRef(new Map<string, number>())
+  const benchSeats = useRef<BenchSeat[]>([])
+  const takenSeats = useRef(new Set<number>())
   const navigation = useRef<Grid | null>(null)
   const appearances = useRef(new Map<string, number>())
   const discussionSlots = useRef(new Map<string, number>())
@@ -138,6 +139,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
       playerLabel.y = 4
       player.addChild(playerRig.body, playerLabel)
       const walker = { x: -1, y: -1, route: [] as Point[] }
+      const sit = { target: -1, at: -1 }
       const pressed = new Set<string>()
       const keyAxis = () => ({
         x: (pressed.has('ArrowRight') || pressed.has('d') ? 1 : 0) - (pressed.has('ArrowLeft') || pressed.has('a') ? 1 : 0),
@@ -150,6 +152,8 @@ export default function Office({ members, conversations, speaking, speech, onSel
         if (!keyNames.includes(key) || typing(event.target) || event.ctrlKey || event.metaKey || event.altKey) return
         pressed.add(key)
         walker.route = []
+        sit.target = -1
+        if (sit.at >= 0) standUp()
         event.preventDefault()
       }
       keyUp = (event: KeyboardEvent) => { pressed.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key) }
@@ -157,9 +161,23 @@ export default function Office({ members, conversations, speaking, speech, onSel
       window.addEventListener('keyup', keyUp)
       app.stage.eventMode = 'static'
       app.stage.hitArea = new Rectangle(-100000, -100000, 200000, 200000)
+      const standUp = () => {
+        const seat = benchSeats.current[sit.at]
+        sit.at = -1
+        playerRig.seated = false
+        if (!seat || !navigation.current) return
+        const out = navigation.current.nearestFree(standPoint(seat))
+        walker.x = out.x
+        walker.y = out.y
+      }
       app.stage.on('pointertap', event => {
         const grid = navigation.current
-        if (grid) walker.route = grid.path({ x: walker.x, y: walker.y }, { x: (event.global.x - app.stage.x) / ZOOM, y: (event.global.y - app.stage.y) / ZOOM }).slice(1)
+        if (!grid) return
+        const click = { x: (event.global.x - app.stage.x) / ZOOM, y: (event.global.y - app.stage.y) / ZOOM }
+        const chair = chairAt(benchSeats.current, click.x, click.y)
+        sit.target = chair >= 0 && !takenSeats.current.has(chair) && chair !== sit.at ? chair : -1
+        if (sit.at >= 0) standUp()
+        walker.route = grid.path({ x: walker.x, y: walker.y }, sit.target >= 0 ? standPoint(benchSeats.current[sit.target]) : click).slice(1)
       })
       const walk = () => {
         const grid = navigation.current
@@ -172,7 +190,9 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const others = [...positions.current.values()]
         const here = { x: walker.x, y: walker.y }
         let next = here
-        if (axis.x || axis.y) {
+        if (sit.at >= 0) {
+          next = here
+        } else if (axis.x || axis.y) {
           walker.route = []
           const size = Math.hypot(axis.x, axis.y)
           next = grid.move(here, axis.x / size * step, axis.y / size * step, others)
@@ -189,10 +209,22 @@ export default function Office({ members, conversations, speaking, speech, onSel
         if (walking) face(playerRig, next.x - here.x, next.y - here.y)
         walker.x = next.x
         walker.y = next.y
+        if (sit.target >= 0 && !walker.route.length && !walking) {
+          const seat = benchSeats.current[sit.target]
+          const stand = standPoint(seat)
+          if (seat && !takenSeats.current.has(sit.target) && Math.hypot(walker.x - stand.x, walker.y - stand.y) < 60) {
+            sit.at = sit.target
+            walker.x = seat.x
+            walker.y = seat.y
+            playerRig.seated = true
+            playerRig.sit = seat.facing
+          }
+          sit.target = -1
+        }
         pose(playerRig, walking, performance.now())
         player.x = walker.x
         player.y = walker.y
-        player.zIndex = walker.y
+        player.zIndex = sit.at >= 0 ? benchSeats.current[sit.at].z : walker.y
         element.dataset.player = `${Math.round(walker.x)},${Math.round(walker.y)}`
         const viewWidth = app.screen.width
         const viewHeight = app.screen.height
@@ -295,6 +327,8 @@ export default function Office({ members, conversations, speaking, speech, onSel
           return sprite
         }
         const built = sceneItems(width, bench)
+        benchSeats.current = bench.seats
+        takenSeats.current = new Set(seats.current.values())
         const occupied = new Set([...seats.current.values()].map(index => `${bench.seats[index].chairX},${bench.seats[index].chair}`))
         for (const item of built.items) {
           const sprite = addSprite(scene[item.name], item.x, item.bottom, item.height, item.layer === 'rug' ? -1 : item.layer === 'top' ? 1000000 : item.bottom, item.flip)

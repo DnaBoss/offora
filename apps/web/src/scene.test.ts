@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { Grid, type Rect } from './navigation.ts'
-import { SCENE_PROPS, OFFICE_PROPS, SOLID, NON_SOLID, DESK_FRONT, WALK_LIMIT_TOP, ROOM_BOTTOM, benchItems, sceneItems, stripBottom, footprint, type SceneName } from './scene.ts'
+import { SCENE_PROPS, OFFICE_PROPS, SOLID, NON_SOLID, DESK_FRONT, WALK_LIMIT_TOP, ROOM_BOTTOM, benchItems, sceneItems, stripBottom, footprint, standPoint, chairAt, type SceneName } from './scene.ts'
 
 const WIDTH = 3840
 const HEIGHT = stripBottom(5) + 70
@@ -124,4 +124,16 @@ test('the bench seats people on more than one side of a desk', () => {
   const { bench } = build()
   const facings = new Set(bench.seats.map(seat => seat.facing))
   assert.ok(facings.has('up') && facings.has('left') && facings.has('right'))
+})
+
+test('a person can walk to the stand point of every chair and a click on the chair finds that chair', () => {
+  const { bench, grid } = build()
+  const from = grid.nearestFree({ x: WIDTH / 2, y: ROOM_BOTTOM + 70 })
+  bench.seats.forEach((seat, index) => {
+    const stand = standPoint(seat)
+    assert.ok(grid.free(stand.x, stand.y), `stand point free ${seat.chairX},${seat.chair}`)
+    assert.ok(reach(grid, from, stand), `stand point reachable ${seat.chairX},${seat.chair}`)
+    assert.equal(chairAt(bench.seats, seat.chairX, seat.chair - 20), index)
+    assert.equal(chairAt([seat], seat.chairX + 200, seat.chair - 20), -1)
+  })
 })
