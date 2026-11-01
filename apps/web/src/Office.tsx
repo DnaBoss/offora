@@ -4,26 +4,50 @@ import type { Conversation, Member } from './types'
 import { Grid, along, length, type Point, type Rect } from './navigation'
 import { layoutDesks, type Spot } from './layout'
 
-const WORLD_WIDTH = 1280
+const SIZES = [1920, 2560, 3840, 5120, 7680]
+const DEFAULT_SIZE = 3840
+const storedSize = () => { try { const value = Number(localStorage.getItem('offora.office.width')); return SIZES.includes(value) ? value : DEFAULT_SIZE } catch { return DEFAULT_SIZE } }
 const FIGURE_SIZE = 130
-const BACKGROUND_WIDTH = 1604
-const BACKGROUND_HEIGHT = 981
-const LEAVES = [[1066, 116, 70, 90], [1440, 20, 100, 90]]
-const HEAD_SOURCE_HEIGHT = 615
-const HEAD_HEIGHT = Math.round(HEAD_SOURCE_HEIGHT * 1280 / BACKGROUND_WIDTH)
-const HEAD_OBSTACLES: Rect[] = [{ x: 0, y: 0, w: 1280, h: 215 }, { x: 0, y: 215, w: 90, h: 400 }, { x: 1190, y: 215, w: 90, h: 400 }, { x: 96, y: 263, w: 115, h: 112 }, { x: 90, y: 400, w: 51, h: 69 }, { x: 234, y: 378, w: 59, h: 80 }, { x: 310, y: 287, w: 225, h: 165 }, { x: 863, y: 215, w: 58, h: 64 }, { x: 862, y: 279, w: 84, h: 184 }, { x: 948, y: 410, w: 48, h: 53 }, { x: 958, y: 315, w: 92, h: 80 }, { x: 1065, y: 279, w: 70, h: 152 }, { x: 1100, y: 236, w: 62, h: 43 }]
-
-function place([x, y, width, height]: number[]) {
-  return { left: `${x / BACKGROUND_WIDTH * 100}%`, top: `${y / BACKGROUND_HEIGHT * 100}%`, width: `${width / BACKGROUND_WIDTH * 100}%`, height: `${height / BACKGROUND_HEIGHT * 100}%` }
+const ROOM_HEIGHT = 580
+const WALL_HEIGHT = 210
+const WALL_SCALE = 0.29
+const WALK_LIMIT_TOP = WALL_HEIGHT + 16
+const SCENE_PROPS = ['wall-tile', 'window', 'bookshelf', 'kitchen', 'fridge', 'cabinet-small', 'palm-tall', 'palm-areca', 'plant-mid', 'rug-green', 'rug-pink', 'meeting', 'sofa-left', 'sofa-right', 'coffee-table', 'side-table', 'bar', 'whiteboard', 'painting', 'pendant'] as const
+type SceneName = typeof SCENE_PROPS[number]
+type SceneItem = { name: SceneName, x: number, bottom: number, height: number, solid?: [number, number], layer?: 'rug' | 'top' }
+function sceneItems(width: number): SceneItem[] {
+  const right = (offset: number) => width - offset
+  return [
+    { name: 'rug-green', x: width * 0.28, bottom: 455, height: 134, layer: 'rug' },
+    { name: 'rug-pink', x: width * 0.75, bottom: 455, height: 134, layer: 'rug' },
+    { name: 'painting', x: width * 0.16, bottom: 150, height: 92, layer: 'top' },
+    { name: 'painting', x: width * 0.86, bottom: 150, height: 92, layer: 'top' },
+    { name: 'pendant', x: width * 0.28, bottom: 125, height: 125, layer: 'top' },
+    { name: 'pendant', x: width * 0.75, bottom: 125, height: 125, layer: 'top' },
+    { name: 'bookshelf', x: 110, bottom: 330, height: 168, solid: [0.9, 0.3] },
+    { name: 'kitchen', x: 290, bottom: 330, height: 130, solid: [0.9, 0.4] },
+    { name: 'fridge', x: 405, bottom: 330, height: 150, solid: [0.8, 0.28] },
+    { name: 'bar', x: width * 0.5, bottom: 345, height: 96, solid: [0.96, 0.55] },
+    { name: 'whiteboard', x: width * 0.5 + 270, bottom: 340, height: 124, solid: [0.5, 0.25] },
+    { name: 'cabinet-small', x: right(70), bottom: 330, height: 104, solid: [0.9, 0.4] },
+    { name: 'bookshelf', x: right(215), bottom: 330, height: 168, solid: [0.9, 0.3] },
+    { name: 'meeting', x: width * 0.28, bottom: 495, height: 150, solid: [0.42, 0.42] },
+    { name: 'sofa-left', x: width * 0.75 - 105, bottom: 500, height: 146, solid: [0.8, 0.45] },
+    { name: 'sofa-right', x: width * 0.75 + 105, bottom: 500, height: 146, solid: [0.8, 0.45] },
+    { name: 'coffee-table', x: width * 0.75, bottom: 488, height: 90, solid: [0.7, 0.4] },
+    { name: 'side-table', x: width * 0.75 + 215, bottom: 480, height: 76, solid: [0.7, 0.3] },
+    { name: 'plant-mid', x: 70, bottom: 530, height: 130, solid: [0.42, 0.2] },
+    { name: 'palm-areca', x: right(105), bottom: 540, height: 140, solid: [0.4, 0.2] }
+  ]
 }
 const DESK_WIDTH = 138
-const PROPS: Record<Spot['kind'], [string, number]> = {
-  plantBig: ['plant-big', 116],
-  plantSmall: ['plant-small', 80],
-  plantTall: ['plant-big', 96],
-  shelf: ['shelf', 95],
-  cabinet: ['cabinet', 85],
-  lamp: ['lamp', 95]
+const PROPS: Record<Spot['kind'], [SceneName, number]> = {
+  plantBig: ['palm-areca', 116],
+  plantSmall: ['plant-mid', 96],
+  plantTall: ['palm-tall', 130],
+  shelf: ['bookshelf', 110],
+  cabinet: ['cabinet-small', 85],
+  lamp: ['plant-mid', 110]
 }
 const FRAME_WIDTH = 160
 const FRAME_HEIGHT = 256
@@ -92,7 +116,8 @@ export default function Office({ members, conversations, speaking, speech, onSel
   const root = useRef<HTMLDivElement>(null)
   const [loadError, setLoadError] = useState(false)
   const [attempt, setAttempt] = useState(0)
-  const world = useRef({ height: 440, spawnY: 340 })
+  const [size, setSize] = useState(storedSize)
+  const world = useRef({ height: 440, spawnY: 340, width: size })
   const positions = useRef(new Map<string, { x: number, y: number }>())
   const seats = useRef(new Map<string, number>())
   const navigation = useRef<Grid | null>(null)
@@ -116,14 +141,12 @@ export default function Office({ members, conversations, speaking, speech, onSel
       if (!active) { app.destroy(true); return }
       initialized = true
       const textures = await Promise.all([1, 2, 3, 4, 5, 6].map(number => `/assets/people-v${number}.png`).map(path => Assets.load(path)))
-      const background = await Assets.load('/assets/office-background-v1.png')
       const floorTexture = await Assets.load('/assets/floor-v1.png')
       if (!active) return
       const deskTexture = await Assets.load('/assets/furniture-v1/desk.png')
-      const headTexture = new Texture({ source: background.source, frame: new Rectangle(0, 0, BACKGROUND_WIDTH, HEAD_SOURCE_HEIGHT) })
+      const scene = Object.fromEntries(await Promise.all(SCENE_PROPS.map(async name => [name, await Assets.load(`/assets/scene-v1/${name}.png`)]))) as Record<SceneName, Texture>
       const parts = textures.map(texture => cutFrames(texture))
-      const props = Object.fromEntries(await Promise.all(Object.entries(PROPS).map(async ([name, [file]]) => [name, await Assets.load(`/assets/furniture-v1/${file}.png`)]))) as Record<keyof typeof PROPS, Texture>
-      sceneTextures = [headTexture, ...parts.flatMap(item => [...item.down, ...item.up, ...item.side])]
+      sceneTextures = [...parts.flatMap(item => [...item.down, ...item.up, ...item.side])]
       motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
       setLoadError(false)
       element.appendChild(app.canvas)
@@ -161,7 +184,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const grid = navigation.current
         if (!grid) return
         const worldHeight = world.current.height
-        const width = WORLD_WIDTH
+        const width = world.current.width
         if (walker.x < 0) { const start = grid.nearestFree({ x: width / 2, y: world.current.spawnY }); walker.x = start.x; walker.y = start.y }
         const step = Math.min(app.ticker.deltaMS, 50) / 1000 * 280
         const axis = keyAxis()
@@ -188,6 +211,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
         pose(playerRig, walking, performance.now())
         player.x = walker.x
         player.y = walker.y
+        player.zIndex = walker.y
         element.dataset.player = `${Math.round(walker.x)},${Math.round(walker.y)}`
         const viewWidth = app.screen.width
         const viewHeight = app.screen.height
@@ -203,7 +227,9 @@ export default function Office({ members, conversations, speaking, speech, onSel
         app.stage.removeChildren()
         app.ticker.stop()
         app.ticker.remove(animate)
-        const width = WORLD_WIDTH
+        const width = size
+        world.current.width = width
+        app.stage.sortableChildren = true
         const layout = groupLayout(width, conversations)
         const groupColumns = layout.columns
         const speakers = members.filter(member => member.presence !== 'offline' && speaking.includes(member.session_id) && !conversations.some(item => item.participants.includes(member.session_id)))
@@ -246,24 +272,42 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const totalSeats = Math.max(0, ...[...seats.current.values()].map(value => value + 1))
         const deskLayout = layoutDesks(totalSeats, width)
         const speakerRows = Math.ceil(speakers.length / speakersPerRow)
-        const height = Math.max(440 + HEAD_HEIGHT, HEAD_HEIGHT + 280 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRows * 190 + deskLayout.height)
+        const height = Math.max(440 + ROOM_HEIGHT, ROOM_HEIGHT + 280 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRows * 190 + deskLayout.height)
         world.current.height = height
-        world.current.spawnY = Math.max(HEAD_HEIGHT + 40, height - 40)
+        world.current.spawnY = Math.max(ROOM_HEIGHT + 40, height - 40)
         const deskTop = height - deskLayout.height
-        const floor = new TilingSprite({ texture: floorTexture, width, height: height - HEAD_HEIGHT })
-        floor.y = HEAD_HEIGHT
+        const floor = new TilingSprite({ texture: floorTexture, width, height: height - WALL_HEIGHT })
+        floor.y = WALL_HEIGHT
+        floor.zIndex = -3
         app.stage.addChild(floor)
-        const head = new Sprite(headTexture)
-        head.scale.set(width / BACKGROUND_WIDTH)
-        app.stage.addChild(head)
-        obstacles.push(...HEAD_OBSTACLES)
-        const prop = (name: keyof typeof PROPS, x: number, bottom: number, solid = true) => {
-          const sprite = new Sprite(props[name])
+        const wall = new TilingSprite({ texture: scene['wall-tile'], width, height: WALL_HEIGHT })
+        wall.tileScale.set(WALL_SCALE)
+        wall.zIndex = -2
+        app.stage.addChild(wall)
+        const windowSprite = new Sprite(scene.window)
+        windowSprite.anchor.set(0.5, 0)
+        windowSprite.scale.set(WALL_SCALE)
+        windowSprite.position.set(width / 2, 42)
+        windowSprite.zIndex = -2
+        app.stage.addChild(windowSprite)
+        const addSprite = (texture: Texture, x: number, bottom: number, displayHeight: number, zIndex: number) => {
+          const sprite = new Sprite(texture)
           sprite.anchor.set(0.5, 1)
-          sprite.scale.set(PROPS[name][1] / props[name].height)
+          sprite.scale.set(displayHeight / texture.height)
           sprite.position.set(x, bottom)
+          sprite.zIndex = zIndex
           app.stage.addChild(sprite)
-          if (solid) obstacles.push({ x: x - sprite.width / 2 + 6, y: bottom - sprite.height / 2, w: sprite.width - 12, h: sprite.height / 2 })
+          return sprite
+        }
+        const footprint = (sprite: Sprite, fraction: [number, number]) => ({ x: sprite.x - sprite.width * fraction[0] / 2, y: sprite.y - sprite.height * fraction[1], w: sprite.width * fraction[0], h: sprite.height * fraction[1] })
+        for (const item of sceneItems(width)) {
+          const sprite = addSprite(scene[item.name], item.x, item.bottom, item.height, item.layer === 'rug' ? -1 : item.layer === 'top' ? 1000000 : item.bottom)
+          if (item.solid) obstacles.push(footprint(sprite, item.solid))
+        }
+        obstacles.push({ x: 0, y: 0, w: width, h: WALK_LIMIT_TOP })
+        const prop = (name: keyof typeof PROPS, x: number, bottom: number) => {
+          const sprite = addSprite(scene[PROPS[name][0]], x, bottom, PROPS[name][1], bottom)
+          obstacles.push(footprint(sprite, [0.5, 0.3]))
         }
         for (const spot of deskLayout.spots) prop(spot.kind, spot.x, deskTop + spot.y + 45)
         for (const member of members) {
@@ -288,9 +332,10 @@ export default function Office({ members, conversations, speaking, speech, onSel
             desk.addChild(name)
           }
           desk.on('pointertap', () => onSelect(member.session_id))
+          desk.zIndex = y - 20
           app.stage.addChild(desk)
         }
-        const grid = new Grid({ left: 65, right: width - 65, top: 90, bottom: Math.max(90, height - 60) }, obstacles)
+        const grid = new Grid({ left: 65, right: width - 65, top: WALK_LIMIT_TOP, bottom: Math.max(WALK_LIMIT_TOP, height - 60) }, obstacles)
         navigation.current = grid
         element.dataset.obstacles = JSON.stringify(obstacles)
         members.filter(member => member.presence !== 'offline').forEach(member => {
@@ -308,7 +353,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const speakerRow = Math.floor(speakerIndex / speakersPerRow)
           const speakersInRow = Math.min(speakersPerRow, speakers.length - speakerRow * speakersPerRow)
           const x = discussion ? Math.max(75, Math.min(width - 75, groupX(slot) + (participantIndex % layout.perRow - (rowCount - 1) / 2) * 160)) : isSpeaking ? width * 0.5 + (speakerIndex % speakersPerRow - (speakersInRow - 1) / 2) * 160 : seat.x
-          const y = discussion ? HEAD_HEIGHT + 205 + Math.floor(slot / groupColumns) * layout.stride + participantRow * 190 : isSpeaking ? HEAD_HEIGHT + 150 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRow * 190 : deskTop + seat.y
+          const y = discussion ? ROOM_HEIGHT + 205 + Math.floor(slot / groupColumns) * layout.stride + participantRow * 190 : isSpeaking ? ROOM_HEIGHT + 150 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRow * 190 : deskTop + seat.y
           const previous = positions.current.get(member.session_id) ?? { x, y }
           const person = new Container({ x: previous.x, y: previous.y, eventMode: 'static', cursor: 'pointer' })
           const look = appearances.current.get(member.session_id) ?? 0
@@ -363,12 +408,13 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const slot = discussionSlots.current.get(discussion.conversation_id) ?? 0
           const shortTitle = shortTitles.get(discussion.conversation_id) ?? ''
           const displayTitle = (titleCounts.get(shortTitle) ?? 0) > 1 ? `${shortTitle} ·${slot + 1}` : shortTitle
-          const badge = new Container({ x: groupX(slot), y: HEAD_HEIGHT + 50 + Math.floor(slot / groupColumns) * layout.stride, eventMode: 'static', cursor: 'pointer' })
+          const badge = new Container({ x: groupX(slot), y: ROOM_HEIGHT + 50 + Math.floor(slot / groupColumns) * layout.stride, eventMode: 'static', cursor: 'pointer' })
           badge.addChild(new Graphics().roundRect(-75, -16, 150, 32, 6).fill({ color: 0xfff8e6 }).stroke({ color: 0x866b49, width: 1 }))
           const title = new Text({ text: displayTitle, style: { fontFamily: 'sans-serif', fontSize: 13, fill: '#193241' } })
           title.anchor.set(0.5)
           if (title.width > 138) title.scale.set(138 / title.width)
           badge.addChild(title)
+          badge.zIndex = 2000000
           badge.on('pointertap', () => onSelectConversation(discussion.conversation_id))
           app.stage.addChild(badge)
         }
@@ -386,6 +432,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
               if (Math.hypot(ahead.x - at.x, ahead.y - at.y) > 0.5) face(move.rig, ahead.x - at.x, ahead.y - at.y)
             }
             move.person.position.set(at.x, at.y)
+            move.person.zIndex = at.y
             positions.current.set(move.id, at)
             pose(move.rig, walking, now)
           }
@@ -399,9 +446,10 @@ export default function Office({ members, conversations, speaking, speech, onSel
       let animate = () => {}
       redraw()
       motionChanged = redraw
+      
       motionPreference.addEventListener('change', motionChanged)
     })().catch(() => { if (active) setLoadError(true) })
     return () => { active = false; if (keyDown) window.removeEventListener('keydown', keyDown); if (keyUp) window.removeEventListener('keyup', keyUp); if (motionChanged) motionPreference?.removeEventListener('change', motionChanged); if (initialized) app.destroy(true); for (const texture of sceneTextures) texture.destroy(false); sceneTextures = [] }
-  }, [members, conversations, speaking, speech, onSelect, onSelectConversation, pauseMotion, attempt])
-  return <div className="office-canvas"><div className={`office-fx${pauseMotion ? ' paused' : ''}`} aria-hidden="true">{LEAVES.map((box, index) => <i key={`l${index}`} className="leaf-sway" style={{ ...place(box), backgroundSize: `${BACKGROUND_WIDTH / box[2] * 100}% ${BACKGROUND_HEIGHT / box[3] * 100}%`, backgroundPosition: `${box[0] / (BACKGROUND_WIDTH - box[2]) * 100}% ${box[1] / (BACKGROUND_HEIGHT - box[3]) * 100}%`, animationDelay: `${index * -1.1}s` }} />)}</div><div className="office-stage" ref={root} aria-hidden="true" />{loadError && <div className="office-error" role="alert"><span>辦公室畫面載入失敗</span><button onClick={() => { setLoadError(false); setAttempt(value => value + 1) }}>重新載入畫面</button></div>}</div>
+  }, [members, conversations, speaking, speech, onSelect, onSelectConversation, pauseMotion, attempt, size])
+  return <div className="office-canvas"><label className="office-size">辦公室寬度<select value={size} onChange={event => { const value = Number(event.target.value); setSize(value); try { localStorage.setItem('offora.office.width', String(value)) } catch {} }}>{SIZES.map(value => <option key={value} value={value}>{value}</option>)}</select></label><div className="office-stage" ref={root} aria-hidden="true" />{loadError && <div className="office-error" role="alert"><span>辦公室畫面載入失敗</span><button onClick={() => { setLoadError(false); setAttempt(value => value + 1) }}>重新載入畫面</button></div>}</div>
 }
