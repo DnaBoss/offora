@@ -180,6 +180,18 @@ const MARGIN_ITEMS: { name: SceneName, height: number }[] = [
 ]
 export type Screen = { rect: Rect }
 export type SeatFacing = 'up' | 'down' | 'left' | 'right'
+export const STAND_OFFSET = 56
+
+export function standPoint(seat: BenchSeat) {
+  if (seat.facing === 'up') return { x: seat.chairX, y: seat.chair + STAND_OFFSET }
+  if (seat.facing === 'down') return { x: seat.chairX, y: seat.chair - CHAIR_HEIGHT - 20 }
+  return { x: seat.chairX + (seat.facing === 'right' ? -STAND_OFFSET : STAND_OFFSET), y: seat.chair }
+}
+
+export function chairAt(seats: BenchSeat[], x: number, y: number) {
+  return seats.findIndex(seat => Math.abs(x - seat.chairX) <= 34 && y >= seat.chair - CHAIR_HEIGHT && y <= seat.chair + 10)
+}
+
 export type BenchSeat = { x: number, desk: number, card: number, y: number, z: number, facing: SeatFacing, chairX: number, chair: number }
 export type Bench = { items: SceneItem[], screens: Screen[], seats: BenchSeat[], rows: number }
 export function benchItems(width: number, rows: number): Bench {
