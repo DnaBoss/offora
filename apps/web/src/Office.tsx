@@ -3,6 +3,7 @@ import { Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Text
 import type { Conversation, Member } from './types'
 import { Grid, along, length, type Point, type Rect } from './navigation'
 import { hash } from './layout'
+import { SCENE_PROPS, OFFICE_PROPS, footprint, WALL_HEIGHT, WALK_LIMIT_TOP, BAY_WIDTH, ROOM_TOP, ROOM_BOTTOM, WALL_THICK, ZOOM, SIT_LIFT, BENCH_MIN_ROWS, benchRow, benchItems, sceneItems, type SceneName, type RoomKind } from './scene'
 
 const SIZES = [1920, 2560, 3840, 5120, 7680]
 const DEFAULT_SIZE = 3840
@@ -10,171 +11,7 @@ const MIN_HEIGHT = 2160
 const storedSize = () => { try { const value = Number(localStorage.getItem('offora.office.width')); return SIZES.includes(value) ? value : DEFAULT_SIZE } catch { return DEFAULT_SIZE } }
 const FIGURE_SIZE = 130
 const ROOM_HEIGHT = 580
-const WALL_HEIGHT = 210
 const WALL_SCALE = 0.29
-const WALK_LIMIT_TOP = WALL_HEIGHT + 16
-const SCENE_PROPS = ['wall-tile', 'window', 'bookshelf', 'kitchen', 'fridge', 'cabinet-small', 'palm-tall', 'palm-areca', 'plant-mid', 'rug-green', 'rug-pink', 'meeting', 'sofa-left', 'sofa-right', 'coffee-table', 'side-table', 'bar', 'whiteboard', 'painting', 'pendant'] as const
-const OFFICE_PROPS = ['blackboard', 'whiteboard-wheel', 'flipchart', 'screen', 'coffee-machine', 'bins', 'moss-wall', 'coatrack', 'reception', 'desk-oak', 'desk-terracotta', 'desk-blue', 'chair-dark', 'chair-orange', 'filing-cabinet', 'bookcase-cream', 'server-rack', 'meeting-round'] as const
-type SceneName = typeof SCENE_PROPS[number] | typeof OFFICE_PROPS[number]
-type SceneItem = { name: SceneName, x: number, bottom: number, height: number, solid?: boolean, layer?: 'rug' | 'top' }
-const SOLID: Partial<Record<SceneName, [number, number]>> = {
-  bookshelf: [1, 0.45],
-  kitchen: [1, 0.55],
-  fridge: [1, 0.4],
-  'cabinet-small': [1, 0.55],
-  'palm-tall': [0.6, 0.45],
-  'palm-areca': [0.6, 0.45],
-  'plant-mid': [0.6, 0.45],
-  meeting: [1, 0.8],
-  'sofa-left': [1, 0.65],
-  'sofa-right': [1, 0.65],
-  'coffee-table': [1, 0.75],
-  'side-table': [1, 0.6],
-  bar: [1, 0.75],
-  whiteboard: [1, 0.6],
-  blackboard: [1, 0.3],
-  'whiteboard-wheel': [1, 0.25],
-  flipchart: [0.7, 0.2],
-  'coffee-machine': [1, 0.5],
-  bins: [1, 0.5],
-  coatrack: [0.5, 0.3],
-  reception: [1, 0.6],
-  'desk-oak': [1, 0.9],
-  'desk-terracotta': [1, 0.9],
-  'desk-blue': [1, 0.9],
-  'chair-dark': [0.6, 0.35],
-  'chair-orange': [0.6, 0.35],
-  'filing-cabinet': [1, 0.5],
-  'bookcase-cream': [1, 0.4],
-  'server-rack': [1, 0.35],
-  'meeting-round': [0.95, 0.55]
-}
-const BAY_WIDTH = 1280
-const ROOM_TOP = WALL_HEIGHT
-const ROOM_BOTTOM = WALL_HEIGHT + 420
-const DOOR_WIDTH = 150
-const WALL_THICK = 12
-type RoomKind = 'pantry' | 'meeting' | 'lounge' | 'focus'
-type Room = { x: number, w: number, kind: RoomKind }
-const ROOM_KINDS: [RoomKind, number][] = [['pantry', 460], ['meeting', 500], ['lounge', 460], ['meeting', 500], ['focus', 260]]
-function roomsLayout(width: number): Room[] {
-  const rooms: Room[] = []
-  let x = 0
-  for (let i = 0; ; i++) {
-    const [kind, w] = ROOM_KINDS[i % ROOM_KINDS.length]
-    if (x + w > width - 240) break
-    rooms.push({ x, w, kind })
-    x += w
-  }
-  if (rooms.length && rooms[rooms.length - 1].kind === 'focus') rooms.pop()
-  const last = rooms[rooms.length - 1]
-  if (last) last.w = width - last.x
-  return rooms
-}
-type Wall = { rect: Rect, style: 'wall' | 'glass' | 'low', face: boolean }
-function roomWalls(rooms: Room[]): Wall[] {
-  const walls: Wall[] = []
-  rooms.forEach((room, index) => {
-    if (index > 0) walls.push({ rect: { x: room.x - WALL_THICK / 2, y: ROOM_TOP, w: WALL_THICK, h: ROOM_BOTTOM - ROOM_TOP + WALL_THICK }, style: 'wall', face: false })
-    const style = room.kind === 'meeting' || room.kind === 'focus' ? 'glass' : 'low'
-    const door = room.x + room.w / 2
-    walls.push(
-      { rect: { x: room.x + WALL_THICK / 2, y: ROOM_BOTTOM, w: door - DOOR_WIDTH / 2 - room.x - WALL_THICK / 2, h: WALL_THICK }, style, face: true },
-      { rect: { x: door + DOOR_WIDTH / 2, y: ROOM_BOTTOM, w: room.x + room.w - WALL_THICK / 2 - door - DOOR_WIDTH / 2, h: WALL_THICK }, style, face: true }
-    )
-  })
-  return walls
-}
-function roomItems(room: Room, index: number): SceneItem[] {
-  const cx = room.x + room.w / 2
-  const odd = index % 2 === 1
-  const item = (name: SceneName, x: number, bottom: number, height: number, solid = true): SceneItem => ({ name, x, bottom, height, solid })
-  const rug = (name: SceneName, x: number, bottom: number, height: number): SceneItem => ({ name, x, bottom, height, layer: 'rug' })
-  if (room.kind === 'pantry') return [
-    item('kitchen', room.x + 85, 335, 130),
-    item('fridge', room.x + 195, 335, 150),
-    item('coffee-machine', room.x + 300, 335, 112),
-    item('bar', cx + 40, 520, 96),
-    item('bins', room.x + room.w - 55, 340, 58),
-    item('plant-mid', room.x + room.w - 50, 580, 118),
-    { name: 'painting', x: room.x + room.w - 130, bottom: 150, height: 92, layer: 'top' }
-  ]
-  if (room.kind === 'meeting') return [
-    rug(odd ? 'rug-pink' : 'rug-green', cx, 560, 160),
-    item('meeting-round', cx, 520, 190),
-    odd ? item('blackboard', room.x + 95, 345, 130) : item('whiteboard-wheel', room.x + 95, 345, 135),
-    { name: 'screen', x: cx + 70, bottom: 300, height: 115, layer: 'top' },
-    item('plant-mid', room.x + room.w - 50, 345, 118)
-  ]
-  if (room.kind === 'lounge') return [
-    rug('rug-pink', cx, 580, 160),
-    item('sofa-left', cx - 95, 480, 140),
-    item('sofa-right', cx + 95, 480, 140),
-    item('coffee-table', cx, 555, 80),
-    item('bookcase-cream', room.x + 75, 340, 165),
-    item('palm-tall', room.x + room.w - 55, 350, 140),
-    { name: 'painting', x: cx, bottom: 150, height: 92, layer: 'top' }
-  ]
-  return [
-    item('desk-oak', cx, 430, 100),
-    item('chair-dark', cx, 495, 72),
-    item('plant-mid', room.x + 45, 345, 118),
-    item('palm-areca', room.x + room.w - 45, 360, 130)
-  ]
-}
-const BENCH_FIRST = 960
-const BENCH_STRIDE = 340
-const BENCH_MIN_ROWS = 4
-const benchRow = (row: number) => BENCH_FIRST + row * BENCH_STRIDE
-const BENCH_DESKS: SceneName[] = ['desk-oak', 'desk-terracotta', 'desk-blue']
-const BENCH_CHAIRS: SceneName[] = ['chair-dark', 'chair-orange']
-const BENCH_PITCH = 146
-const SIT_LIFT = -22
-const ZOOM = 1.5
-type Screen = { rect: Rect }
-type BenchSeat = { x: number, desk: number, chair: number }
-type Bench = { items: SceneItem[], screens: Screen[], seats: BenchSeat[], rows: number }
-function benchItems(width: number, rows: number): Bench {
-  const items: SceneItem[] = []
-  const screens: Screen[] = []
-  const seats: BenchSeat[] = []
-  for (let row = 0; row < rows; row++) {
-    const baseline = benchRow(row)
-    let cursor = 130 + hash(row * 7 + 1) % 120
-    let group = 0
-    const drift = ((hash(row * 3 + 9) % 3) - 1) * 18
-    while (true) {
-      const size = [4, 2, 5, 1, 3, 2][hash(row * 31 + group * 5 + 2) % 6]
-      const span = size * BENCH_PITCH
-      if (cursor + span > width - 130) break
-      const y = baseline + drift + ((hash(group * 11 + row) % 3) - 1) * 14
-      const palette = hash(row * 13 + group * 3) % BENCH_DESKS.length
-      for (let n = 0; n < size; n++) {
-        const x = cursor + n * BENCH_PITCH + BENCH_PITCH / 2
-        items.push(
-          { name: BENCH_DESKS[(palette + (size > 1 ? 0 : 1)) % BENCH_DESKS.length], x, bottom: y, height: 112, solid: true },
-          { name: BENCH_CHAIRS[(n + group + row) % BENCH_CHAIRS.length], x, bottom: y + 62, height: 72, solid: true }
-        )
-        seats.push({ x, desk: y, chair: y + 62 })
-      }
-      if (size > 1) screens.push({ rect: { x: cursor - 7, y: y - 108, w: 12, h: 124 } }, { rect: { x: cursor + span - 5, y: y - 108, w: 12, h: 124 } })
-      const gap = 150 + hash(group * 17 + row * 5) % 150
-      const extra = gap >= 220 ? [{ name: ['plant-mid', 'filing-cabinet', 'palm-areca'][hash(group + row) % 3] as SceneName, x: cursor + span + gap / 2, bottom: y, height: 110, solid: true }] : []
-      items.push(...extra)
-      cursor += span + gap
-      group++
-    }
-    items.push({ name: 'palm-areca', x: 75, bottom: baseline + 10, height: 140, solid: true }, { name: 'plant-mid', x: width - 75, bottom: baseline + 10, height: 130, solid: true })
-  }
-  return { items, screens, seats, rows }
-}
-function sceneItems(width: number, bench: Bench) {
-  const rooms = roomsLayout(width)
-  const items: SceneItem[] = []
-  rooms.forEach((room, index) => items.push(...roomItems(room, index)))
-  items.push(...bench.items)
-  return { items, rooms, walls: roomWalls(rooms), screens: bench.screens }
-}
 const FRAME_WIDTH = 160
 const FRAME_HEIGHT = 256
 const FIGURE_PIXELS = 236
@@ -419,7 +256,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const speakerRows = Math.ceil(speakers.length / speakersPerRow)
         const height = Math.max(MIN_HEIGHT, ROOM_HEIGHT + 280 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRows * 190, benchRow(bench.rows - 1) + 180)
         world.current.height = height
-        world.current.spawnY = Math.max(ROOM_HEIGHT + 40, height - 40)
+        world.current.spawnY = ROOM_BOTTOM + 70
         const floor = new TilingSprite({ texture: floorTexture, width, height: height - WALL_HEIGHT })
         floor.y = WALL_HEIGHT
         floor.zIndex = -3
@@ -445,13 +282,12 @@ export default function Office({ members, conversations, speaking, speech, onSel
           app.stage.addChild(sprite)
           return sprite
         }
-        const footprint = (sprite: Sprite, fraction: [number, number]) => ({ x: sprite.x - sprite.width * fraction[0] / 2, y: sprite.y - sprite.height * fraction[1], w: sprite.width * fraction[0], h: sprite.height * fraction[1] })
         const built = sceneItems(width, bench)
         const occupied = new Set([...seats.current.values()].map(index => `${bench.seats[index].x},${bench.seats[index].chair}`))
         for (const item of built.items) {
           const sprite = addSprite(scene[item.name], item.x, item.bottom, item.height, item.layer === 'rug' ? -1 : item.layer === 'top' ? 1000000 : item.bottom)
-          const fraction = SOLID[item.name]
-          if (item.solid && fraction && !occupied.has(`${item.x},${item.bottom}`)) obstacles.push(footprint(sprite, fraction))
+          const blocked = item.solid ? footprint(item.name, sprite.x, sprite.y, sprite.width, sprite.height) : undefined
+          if (blocked && !occupied.has(`${item.x},${item.bottom}`)) obstacles.push(blocked)
         }
         const ROOM_TINT: Record<RoomKind, number> = { pantry: 0xf5e6c4, meeting: 0xcfe0ea, lounge: 0xe8c7cf, focus: 0xd6e3cf }
         for (const room of built.rooms) {
