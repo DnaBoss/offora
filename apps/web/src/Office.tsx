@@ -2,63 +2,27 @@ import { useEffect, useRef, useState } from 'react'
 import { Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Texture, TilingSprite } from 'pixi.js'
 import type { Conversation, Member } from './types'
 import { Grid, along, length, type Point, type Rect } from './navigation'
-import { layoutDesks, type Spot } from './layout'
+import { hash } from './layout'
+import { SCENE_PROPS, OFFICE_PROPS, footprint, WALL_HEIGHT, WALK_LIMIT_TOP, BAY_WIDTH, ROOM_TOP, ROOM_BOTTOM, WALL_THICK, ZOOM, SIT_LIFT, BENCH_MIN_ROWS, benchRow, benchItems, sceneItems, type SceneName, type RoomKind } from './scene'
 
 const SIZES = [1920, 2560, 3840, 5120, 7680]
 const DEFAULT_SIZE = 3840
+const MIN_HEIGHT = 2160
 const storedSize = () => { try { const value = Number(localStorage.getItem('offora.office.width')); return SIZES.includes(value) ? value : DEFAULT_SIZE } catch { return DEFAULT_SIZE } }
 const FIGURE_SIZE = 130
 const ROOM_HEIGHT = 580
-const WALL_HEIGHT = 210
 const WALL_SCALE = 0.29
-const WALK_LIMIT_TOP = WALL_HEIGHT + 16
-const SCENE_PROPS = ['wall-tile', 'window', 'bookshelf', 'kitchen', 'fridge', 'cabinet-small', 'palm-tall', 'palm-areca', 'plant-mid', 'rug-green', 'rug-pink', 'meeting', 'sofa-left', 'sofa-right', 'coffee-table', 'side-table', 'bar', 'whiteboard', 'painting', 'pendant'] as const
-type SceneName = typeof SCENE_PROPS[number]
-type SceneItem = { name: SceneName, x: number, bottom: number, height: number, solid?: [number, number], layer?: 'rug' | 'top' }
-function sceneItems(width: number): SceneItem[] {
-  const right = (offset: number) => width - offset
-  return [
-    { name: 'rug-green', x: width * 0.28, bottom: 455, height: 134, layer: 'rug' },
-    { name: 'rug-pink', x: width * 0.75, bottom: 455, height: 134, layer: 'rug' },
-    { name: 'painting', x: width * 0.16, bottom: 150, height: 92, layer: 'top' },
-    { name: 'painting', x: width * 0.86, bottom: 150, height: 92, layer: 'top' },
-    { name: 'pendant', x: width * 0.28, bottom: 125, height: 125, layer: 'top' },
-    { name: 'pendant', x: width * 0.75, bottom: 125, height: 125, layer: 'top' },
-    { name: 'bookshelf', x: 110, bottom: 330, height: 168, solid: [0.9, 0.3] },
-    { name: 'kitchen', x: 290, bottom: 330, height: 130, solid: [0.9, 0.4] },
-    { name: 'fridge', x: 405, bottom: 330, height: 150, solid: [0.8, 0.28] },
-    { name: 'bar', x: width * 0.5, bottom: 345, height: 96, solid: [0.96, 0.55] },
-    { name: 'whiteboard', x: width * 0.5 + 270, bottom: 340, height: 124, solid: [0.5, 0.25] },
-    { name: 'cabinet-small', x: right(70), bottom: 330, height: 104, solid: [0.9, 0.4] },
-    { name: 'bookshelf', x: right(215), bottom: 330, height: 168, solid: [0.9, 0.3] },
-    { name: 'meeting', x: width * 0.28, bottom: 495, height: 150, solid: [0.42, 0.42] },
-    { name: 'sofa-left', x: width * 0.75 - 105, bottom: 500, height: 146, solid: [0.8, 0.45] },
-    { name: 'sofa-right', x: width * 0.75 + 105, bottom: 500, height: 146, solid: [0.8, 0.45] },
-    { name: 'coffee-table', x: width * 0.75, bottom: 488, height: 90, solid: [0.7, 0.4] },
-    { name: 'side-table', x: width * 0.75 + 215, bottom: 480, height: 76, solid: [0.7, 0.3] },
-    { name: 'plant-mid', x: 70, bottom: 530, height: 130, solid: [0.42, 0.2] },
-    { name: 'palm-areca', x: right(105), bottom: 540, height: 140, solid: [0.4, 0.2] }
-  ]
-}
-const DESK_WIDTH = 138
-const PROPS: Record<Spot['kind'], [SceneName, number]> = {
-  plantBig: ['palm-areca', 116],
-  plantSmall: ['plant-mid', 96],
-  plantTall: ['palm-tall', 130],
-  shelf: ['bookshelf', 110],
-  cabinet: ['cabinet-small', 85],
-  lamp: ['plant-mid', 110]
-}
 const FRAME_WIDTH = 160
 const FRAME_HEIGHT = 256
 const FIGURE_PIXELS = 236
-const FEET_Y = 68
+const FEET_Y = 0
+const BODY_MID = 65
 const WALK_SEQUENCE = [0, 1, 2, 1]
 const WALK_STEP_MS = 130
 const WALK_SPEED = 260
 
 type Facing = 'down' | 'up' | 'side'
-type Rig = { body: Container, sprite: Sprite, facing: Facing, frames: Record<Facing, Texture[]>, seed: number }
+type Rig = { body: Container, sprite: Sprite, facing: Facing, frames: Record<Facing, Texture[]>, seed: number, seated: boolean, cut: Graphics }
 
 const FACING_ROW: Record<Facing, number> = { down: 0, up: 1, side: 2 }
 
@@ -74,8 +38,9 @@ function buildRig(frames: Record<Facing, Texture[]>, seed: number, tint = 0xffff
   sprite.scale.set(FIGURE_SIZE / FIGURE_PIXELS)
   sprite.y = FEET_Y
   sprite.tint = tint
+  const cut = new Graphics().rect(-100, -250, 200, 216).fill({ color: 0xffffff })
   body.addChild(sprite)
-  return { body, sprite, facing: 'down', frames, seed }
+  return { body, sprite, facing: 'down', frames, seed, seated: false, cut }
 }
 
 function face(rig: Rig, dx: number, dy: number) {
@@ -85,6 +50,20 @@ function face(rig: Rig, dx: number, dy: number) {
 }
 
 function pose(rig: Rig, walking: boolean, now: number) {
+  if (rig.seated && !walking) {
+    if (!rig.cut.parent) rig.body.addChild(rig.cut)
+    rig.body.mask = rig.cut
+  } else if (rig.cut.parent) {
+    rig.body.mask = null
+    rig.body.removeChild(rig.cut)
+  }
+  if (rig.seated && !walking) {
+    rig.facing = 'up'
+    rig.body.scale.x = 1
+    rig.sprite.texture = rig.frames.up[Math.floor(now / 260 + rig.seed) % 2 === 0 ? 0 : 2]
+    rig.body.y = 0
+    return
+  }
   if (!walking && rig.facing !== 'down') face(rig, 0, 1)
   if (walking) {
     const step = Math.floor(now / WALK_STEP_MS + rig.seed) % WALK_SEQUENCE.length
@@ -137,14 +116,13 @@ export default function Office({ members, conversations, speaking, speech, onSel
     let keyUp: ((event: KeyboardEvent) => void) | undefined
     const app = new Application()
     void (async () => {
-      await app.init({ backgroundAlpha: 0, resizeTo: element, antialias: false, resolution: window.devicePixelRatio || 1, autoDensity: true })
+      await app.init({ background: 0x1b2a35, resizeTo: element, antialias: false, resolution: window.devicePixelRatio || 1, autoDensity: true })
       if (!active) { app.destroy(true); return }
       initialized = true
       const textures = await Promise.all([1, 2, 3, 4, 5, 6].map(number => `/assets/people-v${number}.png`).map(path => Assets.load(path)))
       const floorTexture = await Assets.load('/assets/floor-v1.png')
       if (!active) return
-      const deskTexture = await Assets.load('/assets/furniture-v1/desk.png')
-      const scene = Object.fromEntries(await Promise.all(SCENE_PROPS.map(async name => [name, await Assets.load(`/assets/scene-v1/${name}.png`)]))) as Record<SceneName, Texture>
+      const scene = Object.fromEntries(await Promise.all([...SCENE_PROPS.map(name => [name, `/assets/scene-v1/${name}.png`]), ...OFFICE_PROPS.map(name => [name, `/assets/office-v2/${name}.png`])].map(async ([name, url]) => [name, await Assets.load(url)]))) as Record<SceneName, Texture>
       const parts = textures.map(texture => cutFrames(texture))
       sceneTextures = [...parts.flatMap(item => [...item.down, ...item.up, ...item.side])]
       motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -154,7 +132,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
       const playerRig = buildRig(parts[5], 3.1, 0xbfe3ff)
       const playerLabel = new Text({ text: '你（觀察者）', style: { fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold', fill: '#193241', stroke: { color: '#bfe3ff', width: 4 } } })
       playerLabel.anchor.set(0.5, 0)
-      playerLabel.y = 70
+      playerLabel.y = 4
       player.addChild(playerRig.body, playerLabel)
       const walker = { x: -1, y: -1, route: [] as Point[] }
       const pressed = new Set<string>()
@@ -178,7 +156,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
       app.stage.hitArea = new Rectangle(-100000, -100000, 200000, 200000)
       app.stage.on('pointertap', event => {
         const grid = navigation.current
-        if (grid) walker.route = grid.path({ x: walker.x, y: walker.y }, { x: event.global.x - app.stage.x, y: event.global.y - app.stage.y }).slice(1)
+        if (grid) walker.route = grid.path({ x: walker.x, y: walker.y }, { x: (event.global.x - app.stage.x) / ZOOM, y: (event.global.y - app.stage.y) / ZOOM }).slice(1)
       })
       const walk = () => {
         const grid = navigation.current
@@ -215,8 +193,10 @@ export default function Office({ members, conversations, speaking, speech, onSel
         element.dataset.player = `${Math.round(walker.x)},${Math.round(walker.y)}`
         const viewWidth = app.screen.width
         const viewHeight = app.screen.height
-        app.stage.x = viewWidth >= width ? (viewWidth - width) / 2 : -Math.max(0, Math.min(width - viewWidth, walker.x - viewWidth / 2))
-        app.stage.y = viewHeight >= worldHeight ? (viewHeight - worldHeight) / 2 : -Math.max(0, Math.min(worldHeight - viewHeight, walker.y - viewHeight / 2))
+        const follow = (view: number, size: number, at: number) => size * ZOOM <= view ? (view - size * ZOOM) / 2 : Math.min(0, Math.max(view - size * ZOOM, view / 2 - at * ZOOM))
+        app.stage.scale.set(ZOOM)
+        app.stage.x = follow(viewWidth, world.current.width, walker.x)
+        app.stage.y = follow(viewHeight, world.current.height, walker.y - BODY_MID)
         element.dataset.camera = `${Math.round(app.stage.x)},${Math.round(app.stage.y)}`
         const room = element.closest('.office') as HTMLElement | null
         room?.style.setProperty('--wx', `${app.stage.x}px`)
@@ -235,7 +215,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const speakers = members.filter(member => member.presence !== 'offline' && speaking.includes(member.session_id) && !conversations.some(item => item.participants.includes(member.session_id)))
         const speakersPerRow = Math.max(1, Math.floor(width / 160))
         const groupX = (slot: number) => width * (groupColumns === 1 ? 0.5 : slot % 2 === 0 ? 0.27 : 0.73)
-        const moves: { id: string, person: Container, rig: Rig, path: Point[], total: number }[] = []
+        const moves: { id: string, person: Container, rig: Rig, path: Point[], total: number, seated: boolean, chair: number }[] = []
         const obstacles: Rect[] = []
         const reducedMotion = pauseMotion || motionPreference?.matches === true
         const currentIds = new Set(conversations.map(item => item.conversation_id))
@@ -250,16 +230,20 @@ export default function Office({ members, conversations, speaking, speech, onSel
         }
         const memberIds = new Set(members.map(member => member.session_id))
         for (const id of seats.current.keys()) if (!memberIds.has(id)) { seats.current.delete(id); positions.current.delete(id); appearances.current.delete(id) }
+        for (const member of members) if (member.presence === 'offline') seats.current.delete(member.session_id)
+        const needed = Math.max(members.filter(member => member.presence !== 'offline').length, ...[...seats.current.values()].map(value => value + 1))
+        let bench = benchItems(width, BENCH_MIN_ROWS)
+        while (bench.seats.length < needed) bench = benchItems(width, bench.rows + 1)
         for (const member of members) {
           if (!appearances.current.has(member.session_id)) {
-            const counts = textures.map((_, index) => [...appearances.current.values()].filter(value => value === index).length)
+            const counts = textures.slice(0, 5).map((_, index) => [...appearances.current.values()].filter(value => value === index).length)
             appearances.current.set(member.session_id, counts.indexOf(Math.min(...counts)))
           }
           if (member.presence === 'offline') { seats.current.delete(member.session_id); continue }
           if (seats.current.has(member.session_id)) continue
           const used = new Set(seats.current.values())
-          let seat = 0
-          while (used.has(seat)) seat++
+          let seat = -1
+          for (let i = 0; i < bench.seats.length; i++) if (!used.has(i) && (seat < 0 || hash(i * 7 + 3) < hash(seat * 7 + 3))) seat = i
           seats.current.set(member.session_id, seat)
         }
         const shortNames = new Map(members.map(member => [member.session_id, `${shorten(member.role, 6)} ${shorten(member.code, 10)}`]))
@@ -269,13 +253,10 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const name = shortNames.get(member.session_id) ?? ''
           return (nameCounts.get(name) ?? 0) > 1 ? `${name} ·${index + 1}` : name
         }
-        const totalSeats = Math.max(0, ...[...seats.current.values()].map(value => value + 1))
-        const deskLayout = layoutDesks(totalSeats, width)
         const speakerRows = Math.ceil(speakers.length / speakersPerRow)
-        const height = Math.max(440 + ROOM_HEIGHT, ROOM_HEIGHT + 280 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRows * 190 + deskLayout.height)
+        const height = Math.max(MIN_HEIGHT, ROOM_HEIGHT + 280 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRows * 190, benchRow(bench.rows - 1) + 180)
         world.current.height = height
-        world.current.spawnY = Math.max(ROOM_HEIGHT + 40, height - 40)
-        const deskTop = height - deskLayout.height
+        world.current.spawnY = ROOM_BOTTOM + 70
         const floor = new TilingSprite({ texture: floorTexture, width, height: height - WALL_HEIGHT })
         floor.y = WALL_HEIGHT
         floor.zIndex = -3
@@ -284,12 +265,14 @@ export default function Office({ members, conversations, speaking, speech, onSel
         wall.tileScale.set(WALL_SCALE)
         wall.zIndex = -2
         app.stage.addChild(wall)
-        const windowSprite = new Sprite(scene.window)
-        windowSprite.anchor.set(0.5, 0)
-        windowSprite.scale.set(WALL_SCALE)
-        windowSprite.position.set(width / 2, 42)
-        windowSprite.zIndex = -2
-        app.stage.addChild(windowSprite)
+        for (let i = 0; i < Math.max(1, Math.round(width / BAY_WIDTH)); i++) {
+          const windowSprite = new Sprite(scene.window)
+          windowSprite.anchor.set(0.5, 0)
+          windowSprite.scale.set(WALL_SCALE)
+          windowSprite.position.set((i + 0.5) * width / Math.max(1, Math.round(width / BAY_WIDTH)), 42)
+          windowSprite.zIndex = -2
+          app.stage.addChild(windowSprite)
+        }
         const addSprite = (texture: Texture, x: number, bottom: number, displayHeight: number, zIndex: number) => {
           const sprite = new Sprite(texture)
           sprite.anchor.set(0.5, 1)
@@ -299,48 +282,50 @@ export default function Office({ members, conversations, speaking, speech, onSel
           app.stage.addChild(sprite)
           return sprite
         }
-        const footprint = (sprite: Sprite, fraction: [number, number]) => ({ x: sprite.x - sprite.width * fraction[0] / 2, y: sprite.y - sprite.height * fraction[1], w: sprite.width * fraction[0], h: sprite.height * fraction[1] })
-        for (const item of sceneItems(width)) {
+        const built = sceneItems(width, bench)
+        const occupied = new Set([...seats.current.values()].map(index => `${bench.seats[index].x},${bench.seats[index].chair}`))
+        for (const item of built.items) {
           const sprite = addSprite(scene[item.name], item.x, item.bottom, item.height, item.layer === 'rug' ? -1 : item.layer === 'top' ? 1000000 : item.bottom)
-          if (item.solid) obstacles.push(footprint(sprite, item.solid))
+          const blocked = item.solid ? footprint(item.name, sprite.x, sprite.y, sprite.width, sprite.height) : undefined
+          if (blocked && !occupied.has(`${item.x},${item.bottom}`)) obstacles.push(blocked)
+        }
+        const ROOM_TINT: Record<RoomKind, number> = { pantry: 0xf5e6c4, meeting: 0xcfe0ea, lounge: 0xe8c7cf, focus: 0xd6e3cf }
+        for (const room of built.rooms) {
+          const tint = new Graphics().rect(room.x, ROOM_TOP, room.w, ROOM_BOTTOM - ROOM_TOP).fill({ color: ROOM_TINT[room.kind], alpha: 0.38 })
+          tint.zIndex = -2.5
+          app.stage.addChild(tint)
+        }
+        const frame = new Graphics().rect(-8, -8, width + 16, height + 16).stroke({ color: 0x8a6a45, width: 16 })
+        frame.zIndex = 2000000
+        app.stage.addChild(frame)
+        const RAIL = 0x5f7f92
+        for (const wall of built.walls) {
+          const { x, y, w, h } = wall.rect
+          const drawn = new Graphics()
+          if (!wall.face) drawn.rect(x + 3, y, w - 6, h).fill({ color: 0xe9dcc0 }).rect(x + 3, y, w - 6, 3).fill({ color: 0xfbf3df }).rect(x + 3, y, w - 6, h).stroke({ color: 0x8a6a45, width: 1 })
+          else if (wall.style === 'glass') {
+            drawn.rect(x, y - 30, w, 34).fill({ color: 0xcfe7f1, alpha: 0.3 }).rect(x, y - 30, w, 3).fill({ color: RAIL }).rect(x, y + 1, w, 3).fill({ color: RAIL })
+            for (let post = x; post <= x + w; post += 72) drawn.rect(post, y - 30, 3, 34).fill({ color: RAIL })
+          } else drawn.rect(x, y - 14, w, 26).fill({ color: 0xd9b27a }).rect(x, y - 14, w, 4).fill({ color: 0xf0d2a0 }).rect(x, y + 8, w, 4).fill({ color: 0x8a5a30 })
+          drawn.zIndex = ROOM_BOTTOM + 40
+          app.stage.addChild(drawn)
+          obstacles.push(wall.rect)
+        }
+        for (const screen of built.screens) {
+          const { x, y, w, h } = screen.rect
+          const drawn = new Graphics().rect(x, y, w, h).fill({ color: 0x9fb89a }).stroke({ color: 0x5f7a5a, width: 2 })
+          drawn.zIndex = y + h
+          app.stage.addChild(drawn)
+          obstacles.push({ x, y: y + h - 30, w, h: 30 })
         }
         obstacles.push({ x: 0, y: 0, w: width, h: WALK_LIMIT_TOP })
-        const prop = (name: keyof typeof PROPS, x: number, bottom: number) => {
-          const sprite = addSprite(scene[PROPS[name][0]], x, bottom, PROPS[name][1], bottom)
-          obstacles.push(footprint(sprite, [0.5, 0.3]))
-        }
-        for (const spot of deskLayout.spots) prop(spot.kind, spot.x, deskTop + spot.y + 45)
-        for (const member of members) {
-          if (member.presence === 'offline') continue
-          const index = seats.current.get(member.session_id) ?? 0
-          const seat = deskLayout.desks[index]
-          const x = seat.x
-          const y = deskTop + seat.y
-          obstacles.push({ x: x - DESK_WIDTH / 2, y: y - 88, w: DESK_WIDTH, h: 58 })
-          const desk = new Container({ x, y, eventMode: 'static', cursor: 'pointer' })
-          const deskImage = new Sprite(deskTexture)
-          deskImage.anchor.set(0.5, 1)
-          deskImage.y = 17
-          deskImage.scale.set(DESK_WIDTH / deskTexture.width)
-          desk.addChild(deskImage)
-          const away = speaking.includes(member.session_id) || conversations.some(item => item.participants.includes(member.session_id))
-          if (away) {
-            const name = new Text({ text: displayName(member, index), style: { fontFamily: 'sans-serif', fontSize: 12, fontWeight: 'bold', fill: '#fff8e6', stroke: { color: '#754623', width: 3 } } })
-            name.anchor.set(0.5)
-            if (name.width > 120) name.scale.set(120 / name.width)
-            name.y = -59
-            desk.addChild(name)
-          }
-          desk.on('pointertap', () => onSelect(member.session_id))
-          desk.zIndex = y - 20
-          app.stage.addChild(desk)
-        }
         const grid = new Grid({ left: 65, right: width - 65, top: WALK_LIMIT_TOP, bottom: Math.max(WALK_LIMIT_TOP, height - 60) }, obstacles)
         navigation.current = grid
         element.dataset.obstacles = JSON.stringify(obstacles)
         members.filter(member => member.presence !== 'offline').forEach(member => {
           const index = seats.current.get(member.session_id) ?? 0
-          const seat = deskLayout.desks[index] ?? { x: width / 2, y: 100 }
+          const spot = bench.seats[index]
+          const seat = { x: spot.x, y: spot.chair - SIT_LIFT }
           const discussionIndex = conversations.findIndex(item => item.participants.includes(member.session_id))
           const discussion = conversations[discussionIndex]
           const isSpeaking = !discussion && member.presence !== 'offline' && speaking.includes(member.session_id)
@@ -353,7 +338,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const speakerRow = Math.floor(speakerIndex / speakersPerRow)
           const speakersInRow = Math.min(speakersPerRow, speakers.length - speakerRow * speakersPerRow)
           const x = discussion ? Math.max(75, Math.min(width - 75, groupX(slot) + (participantIndex % layout.perRow - (rowCount - 1) / 2) * 160)) : isSpeaking ? width * 0.5 + (speakerIndex % speakersPerRow - (speakersInRow - 1) / 2) * 160 : seat.x
-          const y = discussion ? ROOM_HEIGHT + 205 + Math.floor(slot / groupColumns) * layout.stride + participantRow * 190 : isSpeaking ? ROOM_HEIGHT + 150 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRow * 190 : deskTop + seat.y
+          const y = discussion ? ROOM_HEIGHT + 205 + Math.floor(slot / groupColumns) * layout.stride + participantRow * 190 : isSpeaking ? ROOM_HEIGHT + 150 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRow * 190 : seat.y
           const previous = positions.current.get(member.session_id) ?? { x, y }
           const person = new Container({ x: previous.x, y: previous.y, eventMode: 'static', cursor: 'pointer' })
           const look = appearances.current.get(member.session_id) ?? 0
@@ -364,42 +349,47 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const label = new Text({ text: displayName(member, index), style: { fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold', fill: '#193241', stroke: { color: '#fff8e6', width: 4 } } })
           label.anchor.set(0.5, 0)
           if (label.width > 145) label.scale.set(145 / label.width)
-          label.y = 70
+          label.y = 4
           person.addChild(label)
           if (activity || presence) {
             const status = new Text({ text: `${activity}${presence}`, style: { fontFamily: 'sans-serif', fontSize: 11, fontWeight: 'bold', fill: '#193241', stroke: { color: '#fff8e6', width: 4 } } })
             status.anchor.set(0.5, 0)
             if (status.width > 145) status.scale.set(145 / status.width)
-            status.y = 62
+            status.y = -6
             person.addChild(status)
           }
           const message = speech[member.session_id]
-          if (!message && member.presence !== 'offline' && (member.summary || member.progress !== null)) {
-            if (member.summary) {
-              const work = new Text({ text: shorten(member.summary, 14), style: { fontFamily: 'sans-serif', fontSize: 12, fill: '#193241', stroke: { color: '#fff8e6', width: 4 } } })
-              work.anchor.set(0.5)
-              if (work.width > 145) work.scale.set(145 / work.width)
-              work.y = -92
-              person.addChild(work)
-            }
-            if (member.progress !== null) {
-              person.addChild(new Graphics().roundRect(-50, -80, 100, 8, 4).fill({ color: 0xe4d9c0 }).stroke({ color: 0x866b49, width: 1 }))
-              if (member.progress > 0) person.addChild(new Graphics().roundRect(-50, -80, member.progress, 8, 4).fill({ color: 0x3e9b6b }))
-            }
-          }
           if (message && member.presence !== 'offline') {
             const characters = Array.from(message.trim().replace(/\s+/g, ' '))
             const excerpt = characters.slice(0, 22).join('') + (characters.length > 22 ? '…' : '')
             const bubbleText = new Text({ text: excerpt, style: { fontFamily: 'sans-serif', fontSize: 12, fill: '#193241', wordWrap: true, wordWrapWidth: 130, breakWords: true } })
             bubbleText.anchor.set(0.5)
-            bubbleText.y = -87
-            person.addChild(new Graphics().roundRect(-73, -106, 146, 38, 8).fill({ color: 0xffffff }).stroke({ color: 0x866b49, width: 1 }))
+            bubbleText.y = -155
+            person.addChild(new Graphics().roundRect(-73, -174, 146, 38, 8).fill({ color: 0xffffff }).stroke({ color: 0x866b49, width: 1 }))
             person.addChild(bubbleText)
           }
           person.on('pointertap', () => onSelect(member.session_id))
           app.stage.addChild(person)
+          const note = new Text({ text: member.summary ? shorten(member.summary, 30) : '尚未回報工作', style: { fontFamily: 'sans-serif', fontSize: 12, fill: member.summary ? '#193241' : '#7d8b92', wordWrap: true, wordWrapWidth: 122, breakWords: true, lineHeight: 15 } })
+          note.position.set(-61, 6)
+          const cardHeight = 12 + note.height + (member.progress !== null ? 20 : 0)
+          const card = new Container({ x: spot.x, y: spot.desk - 118 - cardHeight, eventMode: 'static', cursor: 'pointer' })
+          card.addChild(new Graphics().roundRect(-68, 0, 136, cardHeight, 6).fill({ color: 0xfffdf5, alpha: 0.95 }).stroke({ color: 0x866b49, width: 1 }))
+          card.addChild(new Graphics().circle(60, 7, 3).fill({ color: member.presence === 'online' ? 0x3e9b6b : member.presence === 'reconnecting' ? 0xe1a636 : 0xaab4b8 }))
+          card.addChild(note)
+          if (member.progress !== null) {
+            const barY = cardHeight - 14
+            card.addChild(new Graphics().roundRect(-61, barY, 88, 8, 4).fill({ color: 0xe4d9c0 }).stroke({ color: 0x866b49, width: 1 }))
+            if (member.progress > 0) card.addChild(new Graphics().roundRect(-61, barY, Math.min(88, member.progress * 0.88), 8, 4).fill({ color: 0x3e9b6b }))
+            const percent = new Text({ text: `${Math.round(member.progress)}%`, style: { fontFamily: 'sans-serif', fontSize: 11, fontWeight: 'bold', fill: '#193241' } })
+            percent.position.set(32, barY - 2)
+            card.addChild(percent)
+          }
+          card.zIndex = 1500000
+          card.on('pointertap', () => onSelect(member.session_id))
+          app.stage.addChild(card)
           const path = grid.path(previous, { x, y })
-          moves.push({ id: member.session_id, person, rig, path, total: length(path) })
+          moves.push({ id: member.session_id, person, rig, path, total: length(path), seated: !discussion && !isSpeaking, chair: spot.chair })
         })
         const shortTitles = new Map(conversations.map(item => [item.conversation_id, shorten(item.summary, 10)]))
         const titleCounts = new Map<string, number>()
@@ -427,12 +417,13 @@ export default function Office({ members, conversations, speaking, speech, onSel
             const travelled = reducedMotion ? move.total : Math.min(move.total, elapsed * WALK_SPEED)
             const at = along(move.path, travelled)
             const walking = !reducedMotion && travelled < move.total
+            move.rig.seated = move.seated && travelled >= move.total
             if (walking) {
               const ahead = along(move.path, Math.min(move.total, travelled + 6))
               if (Math.hypot(ahead.x - at.x, ahead.y - at.y) > 0.5) face(move.rig, ahead.x - at.x, ahead.y - at.y)
             }
             move.person.position.set(at.x, at.y)
-            move.person.zIndex = at.y
+            move.person.zIndex = move.rig.seated ? move.chair + 1 : at.y
             positions.current.set(move.id, at)
             pose(move.rig, walking, now)
           }

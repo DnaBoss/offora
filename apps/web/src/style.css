@@ -23,3 +23,4 @@
 .roster{position:relative}.roster>summary{cursor:pointer;color:#e4eeef;padding:6px 10px}.roster-pop{position:absolute;right:0;top:100%;z-index:5;width:320px;max-height:60vh;overflow:auto;background:#1a3445;border:1px solid #3e5360;border-radius:8px;padding:12px}
 
 .office-size{position:absolute;top:8px;right:8px;z-index:2;display:flex;gap:6px;align-items:center;padding:4px 8px;border-radius:6px;background:#fff8e5e6;color:#493a29;font-size:12px}.office-size select{font:inherit}
+@media(min-width:1001px){.office{height:calc(100vh - 190px);min-height:520px}}
