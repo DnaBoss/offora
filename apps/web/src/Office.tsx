@@ -3,7 +3,7 @@ import { Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Text
 import type { Conversation, Member } from './types'
 import { Grid, along, length, type Point, type Rect } from './navigation'
 import { hash } from './layout'
-import { SCENE_PROPS, OFFICE_PROPS, footprint, WALL_HEIGHT, WALK_LIMIT_TOP, BAY_WIDTH, ROOM_TOP, ROOM_BOTTOM, WALL_THICK, ZOOM, SIT_LIFT, BENCH_MIN_ROWS, benchRow, benchItems, sceneItems, stripBottom, type SceneName, type RoomKind } from './scene'
+import { SCENE_PROPS, OFFICE_PROPS, footprint, WALL_HEIGHT, WALK_LIMIT_TOP, BAY_WIDTH, ROOM_TOP, ROOM_BOTTOM, WALL_THICK, ZOOM, BENCH_MIN_ROWS, benchRow, benchItems, sceneItems, stripBottom, type SceneName, type SeatFacing, type RoomKind } from './scene'
 
 const SIZES = [1920, 2560, 3840, 5120, 7680]
 const DEFAULT_SIZE = 3840
@@ -23,7 +23,7 @@ const WALK_STEP_MS = 130
 const WALK_SPEED = 260
 
 type Facing = 'down' | 'up' | 'side'
-type Rig = { body: Container, sprite: Sprite, facing: Facing, frames: Record<Facing, Texture[]>, seed: number, seated: boolean, cut: Graphics }
+type Rig = { body: Container, sprite: Sprite, facing: Facing, frames: Record<Facing, Texture[]>, seed: number, seated: boolean, sit: SeatFacing, cut: Graphics }
 
 const FACING_ROW: Record<Facing, number> = { down: 0, up: 1, side: 2 }
 
@@ -41,7 +41,7 @@ function buildRig(frames: Record<Facing, Texture[]>, seed: number, tint = 0xffff
   sprite.tint = tint
   const cut = new Graphics().rect(-100, -250, 200, 216).fill({ color: 0xffffff })
   body.addChild(sprite)
-  return { body, sprite, facing: 'down', frames, seed, seated: false, cut }
+  return { body, sprite, facing: 'down', frames, seed, seated: false, sit: 'up', cut }
 }
 
 function face(rig: Rig, dx: number, dy: number) {
@@ -59,9 +59,10 @@ function pose(rig: Rig, walking: boolean, now: number) {
     rig.body.removeChild(rig.cut)
   }
   if (rig.seated && !walking) {
-    rig.facing = 'up'
-    rig.body.scale.x = 1
-    rig.sprite.texture = rig.frames.up[Math.floor(now / 260 + rig.seed) % 2 === 0 ? 0 : 2]
+    const typing = Math.floor(now / 260 + rig.seed) % 2 === 0 ? 0 : 2
+    rig.facing = rig.sit === 'up' || rig.sit === 'down' ? rig.sit : 'side'
+    rig.body.scale.x = rig.sit === 'left' ? -1 : 1
+    rig.sprite.texture = rig.frames[rig.facing][typing]
     rig.body.y = 0
     return
   }
@@ -195,10 +196,10 @@ export default function Office({ members, conversations, speaking, speech, onSel
         element.dataset.player = `${Math.round(walker.x)},${Math.round(walker.y)}`
         const viewWidth = app.screen.width
         const viewHeight = app.screen.height
-        const follow = (view: number, size: number, at: number) => size * ZOOM <= view ? (view - size * ZOOM) / 2 : Math.min(0, Math.max(view - size * ZOOM, view / 2 - at * ZOOM))
+        const follow = (view: number, at: number) => view / 2 - at * ZOOM
         app.stage.scale.set(ZOOM)
-        app.stage.x = follow(viewWidth, world.current.width, walker.x)
-        app.stage.y = follow(viewHeight, world.current.height, walker.y - BODY_MID)
+        app.stage.x = follow(viewWidth, walker.x)
+        app.stage.y = follow(viewHeight, walker.y - BODY_MID)
         element.dataset.camera = `${Math.round(app.stage.x)},${Math.round(app.stage.y)}`
         const room = element.closest('.office') as HTMLElement | null
         room?.style.setProperty('--wx', `${app.stage.x}px`)
@@ -217,7 +218,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const speakers = members.filter(member => member.presence !== 'offline' && speaking.includes(member.session_id) && !conversations.some(item => item.participants.includes(member.session_id)))
         const speakersPerRow = Math.max(1, Math.floor(width / 160))
         const groupX = (slot: number) => width * (groupColumns === 1 ? 0.5 : slot % 2 === 0 ? 0.27 : 0.73)
-        const moves: { id: string, person: Container, rig: Rig, path: Point[], total: number, seated: boolean, chair: number }[] = []
+        const moves: { id: string, person: Container, rig: Rig, path: Point[], total: number, seated: boolean, z: number, facing: SeatFacing }[] = []
         const obstacles: Rect[] = []
         const reducedMotion = pauseMotion || motionPreference?.matches === true
         const currentIds = new Set(conversations.map(item => item.conversation_id))
@@ -283,20 +284,21 @@ export default function Office({ members, conversations, speaking, speech, onSel
           windowSprite.zIndex = -2
           app.stage.addChild(windowSprite)
         }
-        const addSprite = (texture: Texture, x: number, bottom: number, displayHeight: number, zIndex: number) => {
+        const addSprite = (texture: Texture, x: number, bottom: number, displayHeight: number, zIndex: number, flip = false) => {
           const sprite = new Sprite(texture)
           sprite.anchor.set(0.5, 1)
           sprite.scale.set(displayHeight / texture.height)
+          if (flip) sprite.scale.x *= -1
           sprite.position.set(x, bottom)
           sprite.zIndex = zIndex
           app.stage.addChild(sprite)
           return sprite
         }
         const built = sceneItems(width, bench)
-        const occupied = new Set([...seats.current.values()].map(index => `${bench.seats[index].x},${bench.seats[index].chair}`))
+        const occupied = new Set([...seats.current.values()].map(index => `${bench.seats[index].chairX},${bench.seats[index].chair}`))
         for (const item of built.items) {
-          const sprite = addSprite(scene[item.name], item.x, item.bottom, item.height, item.layer === 'rug' ? -1 : item.layer === 'top' ? 1000000 : item.bottom)
-          const blocked = item.solid ? footprint(item.name, sprite.x, sprite.y, sprite.height) : undefined
+          const sprite = addSprite(scene[item.name], item.x, item.bottom, item.height, item.layer === 'rug' ? -1 : item.layer === 'top' ? 1000000 : item.bottom, item.flip)
+          const blocked = item.solid ? footprint(item.name, sprite.x, sprite.y, sprite.height, item.flip) : undefined
           if (blocked && !occupied.has(`${item.x},${item.bottom}`)) obstacles.push(blocked)
         }
         const ROOM_TINT: Record<RoomKind, number> = { pantry: 0xf5e6c4, meeting: 0xcfe0ea, lounge: 0xe8c7cf, focus: 0xd6e3cf }
@@ -336,7 +338,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
         members.filter(member => member.presence !== 'offline').forEach(member => {
           const index = seats.current.get(member.session_id) ?? 0
           const spot = bench.seats[index]
-          const seat = { x: spot.x, y: spot.chair - SIT_LIFT }
+          const seat = { x: spot.x, y: spot.y }
           const discussionIndex = conversations.findIndex(item => item.participants.includes(member.session_id))
           const discussion = conversations[discussionIndex]
           const isSpeaking = !discussion && member.presence !== 'offline' && speaking.includes(member.session_id)
@@ -384,7 +386,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const note = new Text({ text: member.summary ? shorten(member.summary, 30) : '尚未回報工作', style: { fontFamily: 'sans-serif', fontSize: 12, fill: member.summary ? '#193241' : '#7d8b92', wordWrap: true, wordWrapWidth: 122, breakWords: true, lineHeight: 15 } })
           note.position.set(-61, 6)
           const cardHeight = 12 + note.height + (member.progress !== null ? 20 : 0)
-          const card = new Container({ x: spot.x, y: spot.desk - 118 - cardHeight, eventMode: 'static', cursor: 'pointer' })
+          const card = new Container({ x: spot.x, y: spot.card - cardHeight, eventMode: 'static', cursor: 'pointer' })
           card.addChild(new Graphics().roundRect(-68, 0, 136, cardHeight, 6).fill({ color: 0xfffdf5, alpha: 0.95 }).stroke({ color: 0x866b49, width: 1 }))
           card.addChild(new Graphics().circle(60, 7, 3).fill({ color: member.presence === 'online' ? 0x3e9b6b : member.presence === 'reconnecting' ? 0xe1a636 : 0xaab4b8 }))
           card.addChild(note)
@@ -400,7 +402,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
           card.on('pointertap', () => onSelect(member.session_id))
           app.stage.addChild(card)
           const path = grid.path(previous, { x, y })
-          moves.push({ id: member.session_id, person, rig, path, total: length(path), seated: !discussion && !isSpeaking, chair: spot.chair })
+          moves.push({ id: member.session_id, person, rig, path, total: length(path), seated: !discussion && !isSpeaking, z: spot.z, facing: spot.facing })
         })
         const shortTitles = new Map(conversations.map(item => [item.conversation_id, shorten(item.summary, 10)]))
         const titleCounts = new Map<string, number>()
@@ -429,12 +431,13 @@ export default function Office({ members, conversations, speaking, speech, onSel
             const at = along(move.path, travelled)
             const walking = !reducedMotion && travelled < move.total
             move.rig.seated = move.seated && travelled >= move.total
+            move.rig.sit = move.facing
             if (walking) {
               const ahead = along(move.path, Math.min(move.total, travelled + 6))
               if (Math.hypot(ahead.x - at.x, ahead.y - at.y) > 0.5) face(move.rig, ahead.x - at.x, ahead.y - at.y)
             }
             move.person.position.set(at.x, at.y)
-            move.person.zIndex = move.rig.seated ? move.chair - 1 : at.y
+            move.person.zIndex = move.rig.seated ? move.z : at.y
             positions.current.set(move.id, at)
             pose(move.rig, walking, now)
           }
