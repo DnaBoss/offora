@@ -2,10 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { Grid, type Rect } from './navigation.ts'
-import { SCENE_PROPS, OFFICE_PROPS, WALK_LIMIT_TOP, ROOM_BOTTOM, benchItems, sceneItems, footprint, type SceneName } from './scene.ts'
+import { SCENE_PROPS, OFFICE_PROPS, SOLID, NON_SOLID, DESK_FRONT, SIT_LIFT, WALK_LIMIT_TOP, ROOM_BOTTOM, benchItems, sceneItems, stripBottom, footprint, type SceneName } from './scene.ts'
 
 const WIDTH = 3840
-const HEIGHT = 2160
+const HEIGHT = stripBottom(5) + 70
 const root = new URL('../public/assets/', import.meta.url)
 const aspect = (name: SceneName) => {
   const folder = (SCENE_PROPS as readonly string[]).includes(name) ? 'scene-v1' : 'office-v2'
@@ -19,7 +19,7 @@ function build() {
   const solids: { name: SceneName, rect: Rect }[] = []
   for (const item of built.items) {
     if (!item.solid) continue
-    const rect = footprint(item.name, item.x, item.bottom, item.height * aspect(item.name), item.height)
+    const rect = footprint(item.name, item.x, item.bottom, item.height)
     if (rect) solids.push({ name: item.name, rect })
   }
   const obstacles: Rect[] = [...solids.map(s => s.rect), ...built.walls.map(w => w.rect), ...built.screens.map(s => ({ x: s.rect.x, y: s.rect.y + s.rect.h - 30, w: s.rect.w, h: 30 })), { x: 0, y: 0, w: WIDTH, h: WALK_LIMIT_TOP }]
@@ -74,6 +74,36 @@ test('every room door and every seat can be reached from the spawn', () => {
   }
   for (const seat of bench.seats) assert.ok(reach(grid, from, grid.nearestFree({ x: seat.x, y: seat.chair + 50 })), `seat ${seat.x},${seat.chair}`)
   assert.ok(bench.seats.length >= 30)
+})
+
+test('every seat is reachable at its exact sitting spot once its chair is taken', () => {
+  const { bench, built, grid } = build()
+  const taken = new Set(bench.seats.map(seat => `${seat.x},${seat.chair}`))
+  const rest = built.items.filter(item => item.solid && !taken.has(`${item.x},${item.bottom}`)).map(item => footprint(item.name, item.x, item.bottom, item.height)).filter((rect): rect is Rect => rect !== undefined)
+  const open = new Grid(grid.bounds, [...rest, ...built.walls.map(w => w.rect), ...built.screens.map(s => ({ x: s.rect.x, y: s.rect.y + s.rect.h - 30, w: s.rect.w, h: 30 })), { x: 0, y: 0, w: WIDTH, h: WALK_LIMIT_TOP }])
+  const from = open.nearestFree({ x: WIDTH / 2, y: ROOM_BOTTOM + 70 })
+  for (const seat of bench.seats) assert.ok(reach(open, from, { x: seat.x, y: seat.chair - SIT_LIFT }), `sitting spot ${seat.x},${seat.chair}`)
+})
+
+test('every asset is either solid or on the explicit non-solid list', () => {
+  for (const name of [...SCENE_PROPS, ...OFFICE_PROPS]) {
+    const solid = SOLID[name] !== undefined
+    const free = NON_SOLID.includes(name)
+    const wall = ['wall-tile', 'window'].includes(name)
+    assert.ok(solid !== free || wall, `${name} must be classified exactly once`)
+  }
+  for (const name of NON_SOLID) assert.equal(SOLID[name], undefined, name)
+})
+
+test('every solid footprint sits on the sprite base and has a real size', () => {
+  for (const name of Object.keys(SOLID) as SceneName[]) {
+    const rect = footprint(name, 500, 800, 100)
+    assert.ok(rect, name)
+    const front = name.startsWith('desk-') || name === 'standing-desk' ? DESK_FRONT : 0
+    assert.equal(Math.round(rect.y + rect.h - front), 800, `${name} base`)
+    assert.ok(rect.w > 100 * aspect(name) * 0.25, `${name} width`)
+    assert.ok(rect.x >= 500 - 50 * aspect(name) - 1 && rect.x + rect.w <= 500 + 50 * aspect(name) + 1, `${name} inside sprite`)
+  }
 })
 
 test('negative control: a sealed target is unreachable and a wall stops a path', () => {

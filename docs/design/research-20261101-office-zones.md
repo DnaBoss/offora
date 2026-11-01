@@ -21,3 +21,11 @@
 - 上方依序放：支援區（咖啡機、印表區、檔案櫃、垃圾桶）、會議白板區（圓桌、白板、黑板、投影幕、活頁板）、協作區（隔板、站立桌、佈告板）、一個電話亭角落。
 - 沙發與書架各最多一組。
 - 家具依色盤變化顏色與款式，不重複複製同一件。
+
+## 第二輪研究（2026-11-01）：坐姿、地板、物件密度
+
+風格依據 docs/design/README.md，維持暖橡木、奶油牆、鼠尾草綠與陶土色的 16 位元俯視像素風。
+
+- 坐姿：現成像素辦公室素材包（LimeZu Modern Office，https://limezu.itch.io/modernoffice ）的坐姿只有側視，沒有背視；留言建議用站姿背視圖，下半身用椅背蓋住。結論：不再替每個角色畫坐姿，改畫背視椅，角色下半身藏在椅背後。
+- 地板：IBM 工作場所設計指南（https://ibm.com/design/workplace/interior-architecture/flooring ）用地毯磚做開放辦公區以降噪，並用不同地毯磚分出走道與工作區；KNS Archipelago（https://www.kns-archipelago.com/post/floor-finish-selection-by-zone-why-traffic-intensity-and-business-function-should-drive-your-office ）與 Karlyn Floors（https://karlynfloors.com/office-flooring-guide/ ）按交通量與功能分區選材，茶水間用防滑不吸水的硬地面。結論：桌區鋪地毯磚，走道與休息室用細木紋，茶水間用瓷磚，會議室用地毯。
+- 物件密度：Oktra 空間規劃指南（https://www.oktra.co.uk/insights/office-space-planning/ ）顯示辦公桌約佔六成面積，其餘為協作、社交與支援空間；Cutler（https://www.cutlerdc.com/insights/office-space-planning/ ）建議每十到十五人一間會議室。印表機、儲物櫃、飲水機在來源中列為共用設施但沒有數量比例（未查到數字，數量依畫面需要自訂）。結論：桌區之間加共用設施點與儲物櫃牆。
