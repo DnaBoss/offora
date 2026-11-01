@@ -5,9 +5,9 @@ import bounds from './asset-bounds.json' with { type: 'json' }
 export const WALL_HEIGHT = 210
 export const WALK_LIMIT_TOP = WALL_HEIGHT + 16
 export const SCENE_PROPS = ['wall-tile', 'window', 'bookshelf', 'kitchen', 'fridge', 'cabinet-small', 'palm-tall', 'palm-areca', 'plant-mid', 'rug-green', 'rug-pink', 'meeting', 'sofa-left', 'sofa-right', 'coffee-table', 'side-table', 'bar', 'whiteboard', 'painting', 'pendant'] as const
-export const OFFICE_PROPS = ['blackboard', 'whiteboard-wheel', 'flipchart', 'screen', 'coffee-machine', 'bins', 'moss-wall', 'coatrack', 'reception', 'desk-oak', 'desk-terracotta', 'desk-blue', 'chair-back-dark', 'chair-back-orange', 'filing-cabinet', 'bookcase-cream', 'server-rack', 'meeting-round', 'printer', 'water-cooler', 'lockers', 'vending', 'cafe-table', 'beanbags', 'floor-lamp', 'standing-desk', 'low-shelf', 'planter-box', 'kitchenette', 'phone-booth', 'fiddle-fig', 'archive-boxes', 'armchair', 'wide-bookshelf'] as const
+export const OFFICE_PROPS = ['blackboard', 'whiteboard-wheel', 'flipchart', 'screen', 'coffee-machine', 'bins', 'moss-wall', 'coatrack', 'reception', 'desk-oak', 'desk-terracotta', 'desk-blue', 'chair-back-dark', 'chair-back-orange', 'filing-cabinet', 'bookcase-cream', 'server-rack', 'meeting-round', 'printer', 'water-cooler', 'lockers', 'vending', 'cafe-table', 'beanbags', 'floor-lamp', 'standing-desk', 'low-shelf', 'planter-box', 'kitchenette', 'phone-booth', 'fiddle-fig', 'archive-boxes', 'armchair', 'wide-bookshelf', 'desk-side-oak', 'desk-side-blue', 'chair-side-dark', 'chair-side-orange', 'desk-north-oak', 'desk-north-blue', 'chair-front-dark', 'chair-front-orange'] as const
 export type SceneName = typeof SCENE_PROPS[number] | typeof OFFICE_PROPS[number]
-export type SceneItem = { name: SceneName, x: number, bottom: number, height: number, solid?: boolean, layer?: 'rug' | 'top' }
+export type SceneItem = { name: SceneName, x: number, bottom: number, height: number, solid?: boolean, layer?: 'rug' | 'top', flip?: boolean }
 export const SOLID: Partial<Record<SceneName, number>> = {
   bookshelf: 0.45,
   kitchen: 0.55,
@@ -54,7 +54,15 @@ export const SOLID: Partial<Record<SceneName, number>> = {
   'fiddle-fig': 0.45,
   'archive-boxes': 0.6,
   armchair: 0.6,
-  'wide-bookshelf': 0.4
+  'wide-bookshelf': 0.4,
+  'desk-side-oak': 0.9,
+  'desk-side-blue': 0.9,
+  'chair-side-dark': 0.35,
+  'chair-side-orange': 0.35,
+  'desk-north-oak': 0.45,
+  'desk-north-blue': 0.45,
+  'chair-front-dark': 0.3,
+  'chair-front-orange': 0.3
 }
 export const NON_SOLID: SceneName[] = ['wall-tile', 'window', 'rug-green', 'rug-pink', 'painting', 'pendant', 'screen', 'moss-wall']
 export const BAY_WIDTH = 1280
@@ -131,14 +139,22 @@ export function roomItems(room: Room, index: number): SceneItem[] {
   ]
 }
 export const BENCH_FIRST = 900
-export const BENCH_STRIDE = 270
+export const BENCH_STRIDE = 310
 export const BENCH_MIN_ROWS = 5
 export const benchRow = (row: number) => BENCH_FIRST + row * BENCH_STRIDE
 export const BENCH_DESKS: SceneName[] = ['desk-oak', 'desk-terracotta', 'desk-blue']
 export const BENCH_CHAIRS: SceneName[] = ['chair-back-dark', 'chair-back-orange']
 export const CHAIR_HEIGHT = 84
-export const DESK_FRONT = 26
+export const DESK_FRONT = 12
 export const BENCH_PITCH = 146
+const SIDE_DESKS: SceneName[] = ['desk-side-oak', 'desk-side-blue']
+const SIDE_CHAIRS: SceneName[] = ['chair-side-dark', 'chair-side-orange']
+const SIDE_DESK_HEIGHT = 108
+const SIDE_CHAIR_HEIGHT = 80
+const SIDE_SPAN = 290
+const NORTH_DESKS: SceneName[] = ['desk-north-oak', 'desk-north-blue']
+const NORTH_CHAIRS: SceneName[] = ['chair-front-dark', 'chair-front-orange']
+const NORTH_DESK_HEIGHT = 100
 export const SIT_LIFT = 8
 export const ZOOM = 1
 const aspectOf = (name: SceneName) => (bounds as unknown as Record<string, { aspect: number }>)[name].aspect
@@ -163,7 +179,8 @@ const MARGIN_ITEMS: { name: SceneName, height: number }[] = [
   { name: 'lockers', height: 130 }
 ]
 export type Screen = { rect: Rect }
-export type BenchSeat = { x: number, desk: number, chair: number }
+export type SeatFacing = 'up' | 'down' | 'left' | 'right'
+export type BenchSeat = { x: number, desk: number, card: number, y: number, z: number, facing: SeatFacing, chairX: number, chair: number }
 export type Bench = { items: SceneItem[], screens: Screen[], seats: BenchSeat[], rows: number }
 export function benchItems(width: number, rows: number): Bench {
   const items: SceneItem[] = []
@@ -175,23 +192,54 @@ export function benchItems(width: number, rows: number): Bench {
     let group = 0
     const drift = ((hash(row * 3 + 9) % 3) - 1) * 18
     while (true) {
-      const size = [4, 2, 5, 1, 3, 2][hash(row * 31 + group * 5 + 2) % 6]
-      const span = size * BENCH_PITCH
+      const side = hash(row * 19 + group * 7 + 4) % 4 === 0
+      const north = !side && hash(row * 23 + group * 11 + 1) % 3 === 0
+      const size = side ? 1 : [4, 2, 5, 1, 3, 2][hash(row * 31 + group * 5 + 2) % 6]
+      const span = side ? SIDE_SPAN : size * BENCH_PITCH
       if (cursor + span > width - 130) break
       const y = baseline + drift + ((hash(group * 11 + row) % 3) - 1) * 14
+      if (side) {
+        const tone = hash(row * 5 + group) % 2
+        const desk = SIDE_DESKS[tone]
+        const chair = SIDE_CHAIRS[(row + group) % 2]
+        const mid = cursor + span / 2
+        const deskWidth = SIDE_DESK_HEIGHT * aspectOf(desk)
+        const chairWidth = SIDE_CHAIR_HEIGHT * aspectOf(chair)
+        const reach = deskWidth + chairWidth / 2 + 14
+        const cb = y - 8
+        items.push(
+          { name: desk, x: mid - deskWidth / 2, bottom: y, height: SIDE_DESK_HEIGHT, solid: true },
+          { name: desk, x: mid + deskWidth / 2, bottom: y, height: SIDE_DESK_HEIGHT, solid: true, flip: true },
+          { name: chair, x: mid - reach, bottom: cb, height: SIDE_CHAIR_HEIGHT, solid: true },
+          { name: chair, x: mid + reach, bottom: cb, height: SIDE_CHAIR_HEIGHT, solid: true, flip: true }
+        )
+        seats.push({ x: mid - reach, desk: y, card: y - 150, y: cb - 20, z: cb + 1, facing: 'right', chairX: mid - reach, chair: cb }, { x: mid + reach, desk: y, card: y - 150, y: cb - 20, z: cb + 1, facing: 'left', chairX: mid + reach, chair: cb })
+        cursor += span + 130 + hash(group * 17 + row * 5) % 110
+        group++
+        continue
+      }
       const palette = hash(row * 13 + group * 3) % BENCH_DESKS.length
       for (let n = 0; n < size; n++) {
         const x = cursor + n * BENCH_PITCH + BENCH_PITCH / 2
+        if (north) {
+          const desk = NORTH_DESKS[(row + group) % 2]
+          items.push(
+            { name: desk, x, bottom: y, height: NORTH_DESK_HEIGHT, solid: true },
+            { name: NORTH_CHAIRS[(n + group + row) % 2], x, bottom: y - 78, height: CHAIR_HEIGHT, solid: true }
+          )
+          seats.push({ x, desk: y, card: y - 232, y: y - 86, z: y - 77, facing: 'down', chairX: x, chair: y - 78 })
+          continue
+        }
         items.push(
           { name: BENCH_DESKS[(palette + (size > 1 ? 0 : 1)) % BENCH_DESKS.length], x, bottom: y, height: 112, solid: true },
           { name: BENCH_CHAIRS[(n + group + row) % BENCH_CHAIRS.length], x, bottom: y + 62, height: CHAIR_HEIGHT, solid: true }
         )
-        seats.push({ x, desk: y, chair: y + 62 })
+        seats.push({ x, desk: y, card: y - 118, y: y + 62 - SIT_LIFT, z: y + 62 - 1, facing: 'up', chairX: x, chair: y + 62 })
       }
-      if (size > 1) screens.push({ rect: { x: cursor - 7, y: y - 108, w: 12, h: 124 } }, { rect: { x: cursor + span - 5, y: y - 108, w: 12, h: 124 } })
-      const gap = 90 + hash(group * 17 + row * 5) % 110
-      const pick = HUB_ITEMS.filter(hub => hub.height * aspectOf(hub.name) <= gap - 24)
-      const hub = pick.length && hash(group * 3 + row) % 4 > 0 ? pick[hash(group * 5 + row * 3) % pick.length] : undefined
+      if (size > 1 && !north) screens.push({ rect: { x: cursor - 7, y: y - 108, w: 12, h: 124 } }, { rect: { x: cursor + span - 5, y: y - 108, w: 12, h: 124 } })
+      const gap = 130 + hash(group * 17 + row * 5) % 110
+      const pick = HUB_ITEMS.filter(hub => hub.height * aspectOf(hub.name) <= gap - 90)
+      const hub = pick.length && hash(group * 3 + row) % 2 > 0 ? pick[hash(group * 5 + row * 3) % pick.length] : undefined
       const extra = hub ? [{ name: hub.name, x: cursor + span + gap / 2, bottom: y + hub.drop, height: hub.height, solid: true }] : []
       items.push(...extra)
       cursor += span + gap
@@ -229,7 +277,7 @@ export function stripItems(width: number, rows: number): SceneItem[] {
     const w = height * aspectOf(name)
     if (cursor + w > width - 130) break
     items.push({ name, x: cursor + w / 2, bottom: stripBottom(rows), height, solid: true })
-    cursor += w + 40 + hash(i * 3 + 1) % 50
+    cursor += w + 90 + hash(i * 3 + 1) % 60
     last = index
   }
   return items
@@ -241,15 +289,17 @@ export function sceneItems(width: number, bench: Bench) {
   items.push(...bench.items, ...stripItems(width, bench.rows))
   return { items, rooms, walls: roomWalls(rooms), screens: bench.screens }
 }
-export function footprint(name: SceneName, x: number, bottom: number, height: number): Rect | undefined {
+export function footprint(name: SceneName, x: number, bottom: number, height: number, flip = false): Rect | undefined {
   const depth = SOLID[name]
   const info = (bounds as unknown as Record<string, { aspect: number, bands: ([number, number] | null)[] }>)[name]
   if (depth === undefined || !info) return undefined
   const first = Math.round((1 - depth) * 10)
   const spans = info.bands.slice(first).filter((band): band is [number, number] => band !== null)
   if (!spans.length) return undefined
-  const left = Math.min(...spans.map(span => span[0]))
-  const right = Math.max(...spans.map(span => span[1]))
+  const lo = Math.min(...spans.map(span => span[0]))
+  const hi = Math.max(...spans.map(span => span[1]))
+  const left = flip ? 1 - hi : lo
+  const right = flip ? 1 - lo : hi
   const width = height * info.aspect
   const front = name.startsWith('desk-') || name === 'standing-desk' ? DESK_FRONT : 0
   return { x: x - width / 2 + left * width, y: bottom - height * (1 - first / 10), w: (right - left) * width, h: height * (1 - first / 10) + front }

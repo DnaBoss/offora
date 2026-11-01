@@ -31,7 +31,7 @@ test('a blocked target moves to the nearest free spot', () => {
 
 test('keyboard movement slides along a wall and stops at other people', () => {
   const grid = new Grid(bounds, [wall])
-  const start = { x: 150, y: 100 }
+  const start = { x: 165, y: 100 }
   const slid = grid.move(start, 10, 10)
   assert.ok(slid.y > start.y && slid.x === start.x)
   assert.deepEqual(grid.move({ x: 60, y: 260 }, 10, 0, [{ x: 90, y: 260 }]), { x: 60, y: 260 })

@@ -3,7 +3,7 @@ export type Rect = { x: number, y: number, w: number, h: number }
 export type Bounds = { left: number, right: number, top: number, bottom: number }
 
 export const CELL = 20
-export const RADIUS = 22
+export const RADIUS = 12
 export const PERSON_GAP = 44
 
 export class Grid {

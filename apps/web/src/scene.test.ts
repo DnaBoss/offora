@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { Grid, type Rect } from './navigation.ts'
-import { SCENE_PROPS, OFFICE_PROPS, SOLID, NON_SOLID, DESK_FRONT, SIT_LIFT, WALK_LIMIT_TOP, ROOM_BOTTOM, benchItems, sceneItems, stripBottom, footprint, type SceneName } from './scene.ts'
+import { SCENE_PROPS, OFFICE_PROPS, SOLID, NON_SOLID, DESK_FRONT, WALK_LIMIT_TOP, ROOM_BOTTOM, benchItems, sceneItems, stripBottom, footprint, type SceneName } from './scene.ts'
 
 const WIDTH = 3840
 const HEIGHT = stripBottom(5) + 70
@@ -19,7 +19,7 @@ function build() {
   const solids: { name: SceneName, rect: Rect }[] = []
   for (const item of built.items) {
     if (!item.solid) continue
-    const rect = footprint(item.name, item.x, item.bottom, item.height)
+    const rect = footprint(item.name, item.x, item.bottom, item.height, item.flip)
     if (rect) solids.push({ name: item.name, rect })
   }
   const obstacles: Rect[] = [...solids.map(s => s.rect), ...built.walls.map(w => w.rect), ...built.screens.map(s => ({ x: s.rect.x, y: s.rect.y + s.rect.h - 30, w: s.rect.w, h: 30 })), { x: 0, y: 0, w: WIDTH, h: WALK_LIMIT_TOP }]
@@ -78,11 +78,11 @@ test('every room door and every seat can be reached from the spawn', () => {
 
 test('every seat is reachable at its exact sitting spot once its chair is taken', () => {
   const { bench, built, grid } = build()
-  const taken = new Set(bench.seats.map(seat => `${seat.x},${seat.chair}`))
-  const rest = built.items.filter(item => item.solid && !taken.has(`${item.x},${item.bottom}`)).map(item => footprint(item.name, item.x, item.bottom, item.height)).filter((rect): rect is Rect => rect !== undefined)
+  const taken = new Set(bench.seats.map(seat => `${seat.chairX},${seat.chair}`))
+  const rest = built.items.filter(item => item.solid && !taken.has(`${item.x},${item.bottom}`)).map(item => footprint(item.name, item.x, item.bottom, item.height, item.flip)).filter((rect): rect is Rect => rect !== undefined)
   const open = new Grid(grid.bounds, [...rest, ...built.walls.map(w => w.rect), ...built.screens.map(s => ({ x: s.rect.x, y: s.rect.y + s.rect.h - 30, w: s.rect.w, h: 30 })), { x: 0, y: 0, w: WIDTH, h: WALK_LIMIT_TOP }])
   const from = open.nearestFree({ x: WIDTH / 2, y: ROOM_BOTTOM + 70 })
-  for (const seat of bench.seats) assert.ok(reach(open, from, { x: seat.x, y: seat.chair - SIT_LIFT }), `sitting spot ${seat.x},${seat.chair}`)
+  for (const seat of bench.seats) assert.ok(reach(open, from, { x: seat.x, y: seat.y }), `sitting spot ${seat.x},${seat.chair}`)
 })
 
 test('every asset is either solid or on the explicit non-solid list', () => {
@@ -118,4 +118,10 @@ test('negative control: a sealed target is unreachable and a wall stops a path',
 
 test('every asset used by the scene has an image', () => {
   for (const name of [...SCENE_PROPS, ...OFFICE_PROPS]) assert.ok(aspect(name) > 0, name)
+})
+
+test('the bench seats people on more than one side of a desk', () => {
+  const { bench } = build()
+  const facings = new Set(bench.seats.map(seat => seat.facing))
+  assert.ok(facings.has('up') && facings.has('left') && facings.has('right'))
 })
