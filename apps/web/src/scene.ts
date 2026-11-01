@@ -1,44 +1,62 @@
 import type { Rect } from './navigation.ts'
 import { hash } from './layout.ts'
+import bounds from './asset-bounds.json' with { type: 'json' }
 
 export const WALL_HEIGHT = 210
 export const WALK_LIMIT_TOP = WALL_HEIGHT + 16
 export const SCENE_PROPS = ['wall-tile', 'window', 'bookshelf', 'kitchen', 'fridge', 'cabinet-small', 'palm-tall', 'palm-areca', 'plant-mid', 'rug-green', 'rug-pink', 'meeting', 'sofa-left', 'sofa-right', 'coffee-table', 'side-table', 'bar', 'whiteboard', 'painting', 'pendant'] as const
-export const OFFICE_PROPS = ['blackboard', 'whiteboard-wheel', 'flipchart', 'screen', 'coffee-machine', 'bins', 'moss-wall', 'coatrack', 'reception', 'desk-oak', 'desk-terracotta', 'desk-blue', 'chair-dark', 'chair-orange', 'filing-cabinet', 'bookcase-cream', 'server-rack', 'meeting-round'] as const
+export const OFFICE_PROPS = ['blackboard', 'whiteboard-wheel', 'flipchart', 'screen', 'coffee-machine', 'bins', 'moss-wall', 'coatrack', 'reception', 'desk-oak', 'desk-terracotta', 'desk-blue', 'chair-back-dark', 'chair-back-orange', 'filing-cabinet', 'bookcase-cream', 'server-rack', 'meeting-round', 'printer', 'water-cooler', 'lockers', 'vending', 'cafe-table', 'beanbags', 'floor-lamp', 'standing-desk', 'low-shelf', 'planter-box', 'kitchenette', 'phone-booth', 'fiddle-fig', 'archive-boxes', 'armchair', 'wide-bookshelf'] as const
 export type SceneName = typeof SCENE_PROPS[number] | typeof OFFICE_PROPS[number]
 export type SceneItem = { name: SceneName, x: number, bottom: number, height: number, solid?: boolean, layer?: 'rug' | 'top' }
-export const SOLID: Partial<Record<SceneName, [number, number]>> = {
-  bookshelf: [1, 0.45],
-  kitchen: [1, 0.55],
-  fridge: [1, 0.4],
-  'cabinet-small': [1, 0.55],
-  'palm-tall': [0.6, 0.45],
-  'palm-areca': [0.6, 0.45],
-  'plant-mid': [0.6, 0.45],
-  meeting: [1, 0.8],
-  'sofa-left': [1, 0.65],
-  'sofa-right': [1, 0.65],
-  'coffee-table': [1, 0.75],
-  'side-table': [1, 0.6],
-  bar: [1, 0.75],
-  whiteboard: [1, 0.6],
-  blackboard: [1, 0.3],
-  'whiteboard-wheel': [1, 0.25],
-  flipchart: [0.7, 0.2],
-  'coffee-machine': [1, 0.5],
-  bins: [1, 0.5],
-  coatrack: [0.5, 0.3],
-  reception: [1, 0.6],
-  'desk-oak': [1, 0.9],
-  'desk-terracotta': [1, 0.9],
-  'desk-blue': [1, 0.9],
-  'chair-dark': [0.6, 0.35],
-  'chair-orange': [0.6, 0.35],
-  'filing-cabinet': [1, 0.5],
-  'bookcase-cream': [1, 0.4],
-  'server-rack': [1, 0.35],
-  'meeting-round': [0.95, 0.55]
+export const SOLID: Partial<Record<SceneName, number>> = {
+  bookshelf: 0.45,
+  kitchen: 0.55,
+  fridge: 0.4,
+  'cabinet-small': 0.55,
+  'palm-tall': 0.45,
+  'palm-areca': 0.45,
+  'plant-mid': 0.45,
+  meeting: 0.8,
+  'sofa-left': 0.65,
+  'sofa-right': 0.65,
+  'coffee-table': 0.75,
+  'side-table': 0.6,
+  bar: 0.75,
+  whiteboard: 0.6,
+  blackboard: 0.3,
+  'whiteboard-wheel': 0.25,
+  flipchart: 0.2,
+  'coffee-machine': 0.5,
+  bins: 0.5,
+  coatrack: 0.3,
+  reception: 0.6,
+  'desk-oak': 0.9,
+  'desk-terracotta': 0.9,
+  'desk-blue': 0.9,
+  'chair-back-dark': 0.35,
+  'chair-back-orange': 0.35,
+  'filing-cabinet': 0.5,
+  'bookcase-cream': 0.4,
+  'server-rack': 0.35,
+  'meeting-round': 0.55,
+  printer: 0.6,
+  'water-cooler': 0.4,
+  lockers: 0.35,
+  vending: 0.35,
+  'cafe-table': 0.5,
+  beanbags: 0.6,
+  'floor-lamp': 0.3,
+  'standing-desk': 0.9,
+  'low-shelf': 0.5,
+  'planter-box': 0.6,
+  kitchenette: 0.4,
+  'phone-booth': 0.5,
+  'fiddle-fig': 0.45,
+  'archive-boxes': 0.6,
+  armchair: 0.6,
+  'wide-bookshelf': 0.4
 }
+export const NON_SOLID: SceneName[] = ['wall-tile', 'window', 'rug-green', 'rug-pink', 'painting', 'pendant', 'screen', 'moss-wall']
 export const BAY_WIDTH = 1280
 export const ROOM_TOP = WALL_HEIGHT
 export const ROOM_BOTTOM = WALL_HEIGHT + 420
@@ -107,7 +125,7 @@ export function roomItems(room: Room, index: number): SceneItem[] {
   ]
   return [
     item('desk-oak', cx, 430, 100),
-    item('chair-dark', cx, 495, 72),
+    item('chair-back-dark', cx, 495, CHAIR_HEIGHT),
     item('plant-mid', room.x + 45, 345, 118),
     item('palm-areca', room.x + room.w - 45, 360, 130)
   ]
@@ -117,11 +135,33 @@ export const BENCH_STRIDE = 270
 export const BENCH_MIN_ROWS = 5
 export const benchRow = (row: number) => BENCH_FIRST + row * BENCH_STRIDE
 export const BENCH_DESKS: SceneName[] = ['desk-oak', 'desk-terracotta', 'desk-blue']
-export const BENCH_CHAIRS: SceneName[] = ['chair-dark', 'chair-orange']
+export const BENCH_CHAIRS: SceneName[] = ['chair-back-dark', 'chair-back-orange']
+export const CHAIR_HEIGHT = 84
 export const DESK_FRONT = 26
 export const BENCH_PITCH = 146
-export const SIT_LIFT = -22
-export const ZOOM = 1.5
+export const SIT_LIFT = 8
+export const ZOOM = 1
+const aspectOf = (name: SceneName) => (bounds as unknown as Record<string, { aspect: number }>)[name].aspect
+const HUB_ITEMS: { name: SceneName, height: number, drop: number }[] = [
+  { name: 'plant-mid', height: 110, drop: 0 },
+  { name: 'filing-cabinet', height: 110, drop: 0 },
+  { name: 'palm-areca', height: 120, drop: 0 },
+  { name: 'printer', height: 84, drop: 0 },
+  { name: 'water-cooler', height: 112, drop: 0 },
+  { name: 'lockers', height: 120, drop: 0 },
+  { name: 'fiddle-fig', height: 120, drop: 0 },
+  { name: 'low-shelf', height: 84, drop: 0 },
+  { name: 'floor-lamp', height: 120, drop: 0 },
+  { name: 'archive-boxes', height: 64, drop: 0 },
+  { name: 'planter-box', height: 70, drop: 0 }
+]
+const MARGIN_ITEMS: { name: SceneName, height: number }[] = [
+  { name: 'palm-areca', height: 140 },
+  { name: 'fiddle-fig', height: 130 },
+  { name: 'plant-mid', height: 130 },
+  { name: 'floor-lamp', height: 130 },
+  { name: 'lockers', height: 130 }
+]
 export type Screen = { rect: Rect }
 export type BenchSeat = { x: number, desk: number, chair: number }
 export type Bench = { items: SceneItem[], screens: Screen[], seats: BenchSeat[], rows: number }
@@ -144,31 +184,73 @@ export function benchItems(width: number, rows: number): Bench {
         const x = cursor + n * BENCH_PITCH + BENCH_PITCH / 2
         items.push(
           { name: BENCH_DESKS[(palette + (size > 1 ? 0 : 1)) % BENCH_DESKS.length], x, bottom: y, height: 112, solid: true },
-          { name: BENCH_CHAIRS[(n + group + row) % BENCH_CHAIRS.length], x, bottom: y + 62, height: 72, solid: true }
+          { name: BENCH_CHAIRS[(n + group + row) % BENCH_CHAIRS.length], x, bottom: y + 62, height: CHAIR_HEIGHT, solid: true }
         )
         seats.push({ x, desk: y, chair: y + 62 })
       }
       if (size > 1) screens.push({ rect: { x: cursor - 7, y: y - 108, w: 12, h: 124 } }, { rect: { x: cursor + span - 5, y: y - 108, w: 12, h: 124 } })
       const gap = 90 + hash(group * 17 + row * 5) % 110
-      const extra = gap >= 140 && hash(group * 3 + row) % 3 > 0 ? [{ name: ['plant-mid', 'filing-cabinet', 'palm-areca'][hash(group + row) % 3] as SceneName, x: cursor + span + gap / 2, bottom: y, height: 110, solid: true }] : []
+      const pick = HUB_ITEMS.filter(hub => hub.height * aspectOf(hub.name) <= gap - 24)
+      const hub = pick.length && hash(group * 3 + row) % 4 > 0 ? pick[hash(group * 5 + row * 3) % pick.length] : undefined
+      const extra = hub ? [{ name: hub.name, x: cursor + span + gap / 2, bottom: y + hub.drop, height: hub.height, solid: true }] : []
       items.push(...extra)
       cursor += span + gap
       group++
     }
-    items.push({ name: 'palm-areca', x: 75, bottom: baseline + 10, height: 140, solid: true }, { name: 'plant-mid', x: width - 75, bottom: baseline + 10, height: 130, solid: true })
+    const left = MARGIN_ITEMS[hash(row * 7 + 2) % MARGIN_ITEMS.length]
+    const right = MARGIN_ITEMS[hash(row * 11 + 5) % MARGIN_ITEMS.length]
+    items.push({ name: left.name, x: 75, bottom: baseline + 10, height: left.height, solid: true }, { name: right.name, x: width - 75, bottom: baseline + 10, height: right.height, solid: true })
   }
   return { items, screens, seats, rows }
+}
+export const stripBottom = (rows: number) => benchRow(rows - 1) + 240
+const STRIP_ITEMS: { name: SceneName, height: number }[] = [
+  { name: 'lockers', height: 130 },
+  { name: 'wide-bookshelf', height: 130 },
+  { name: 'vending', height: 130 },
+  { name: 'kitchenette', height: 112 },
+  { name: 'phone-booth', height: 140 },
+  { name: 'armchair', height: 96 },
+  { name: 'cafe-table', height: 96 },
+  { name: 'beanbags', height: 84 },
+  { name: 'fiddle-fig', height: 130 },
+  { name: 'standing-desk', height: 104 },
+  { name: 'water-cooler', height: 112 },
+  { name: 'printer', height: 90 }
+]
+export function stripItems(width: number, rows: number): SceneItem[] {
+  const items: SceneItem[] = []
+  let cursor = 150
+  let last = -1
+  for (let i = 0; ; i++) {
+    let index = hash(i * 7 + rows) % STRIP_ITEMS.length
+    if (index === last) index = (index + 1) % STRIP_ITEMS.length
+    const { name, height } = STRIP_ITEMS[index]
+    const w = height * aspectOf(name)
+    if (cursor + w > width - 130) break
+    items.push({ name, x: cursor + w / 2, bottom: stripBottom(rows), height, solid: true })
+    cursor += w + 40 + hash(i * 3 + 1) % 50
+    last = index
+  }
+  return items
 }
 export function sceneItems(width: number, bench: Bench) {
   const rooms = roomsLayout(width)
   const items: SceneItem[] = []
   rooms.forEach((room, index) => items.push(...roomItems(room, index)))
-  items.push(...bench.items)
+  items.push(...bench.items, ...stripItems(width, bench.rows))
   return { items, rooms, walls: roomWalls(rooms), screens: bench.screens }
 }
-export function footprint(name: SceneName, x: number, bottom: number, width: number, height: number): Rect | undefined {
-  const fraction = SOLID[name]
-  if (!fraction) return undefined
-  const front = name.startsWith('desk-') ? DESK_FRONT : 0
-  return { x: x - width * fraction[0] / 2, y: bottom - height * fraction[1], w: width * fraction[0], h: height * fraction[1] + front }
+export function footprint(name: SceneName, x: number, bottom: number, height: number): Rect | undefined {
+  const depth = SOLID[name]
+  const info = (bounds as unknown as Record<string, { aspect: number, bands: ([number, number] | null)[] }>)[name]
+  if (depth === undefined || !info) return undefined
+  const first = Math.round((1 - depth) * 10)
+  const spans = info.bands.slice(first).filter((band): band is [number, number] => band !== null)
+  if (!spans.length) return undefined
+  const left = Math.min(...spans.map(span => span[0]))
+  const right = Math.max(...spans.map(span => span[1]))
+  const width = height * info.aspect
+  const front = name.startsWith('desk-') || name === 'standing-desk' ? DESK_FRONT : 0
+  return { x: x - width / 2 + left * width, y: bottom - height * (1 - first / 10), w: (right - left) * width, h: height * (1 - first / 10) + front }
 }

@@ -3,12 +3,13 @@ import { Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Text
 import type { Conversation, Member } from './types'
 import { Grid, along, length, type Point, type Rect } from './navigation'
 import { hash } from './layout'
-import { SCENE_PROPS, OFFICE_PROPS, footprint, WALL_HEIGHT, WALK_LIMIT_TOP, BAY_WIDTH, ROOM_TOP, ROOM_BOTTOM, WALL_THICK, ZOOM, SIT_LIFT, BENCH_MIN_ROWS, benchRow, benchItems, sceneItems, type SceneName, type RoomKind } from './scene'
+import { SCENE_PROPS, OFFICE_PROPS, footprint, WALL_HEIGHT, WALK_LIMIT_TOP, BAY_WIDTH, ROOM_TOP, ROOM_BOTTOM, WALL_THICK, ZOOM, SIT_LIFT, BENCH_MIN_ROWS, benchRow, benchItems, sceneItems, stripBottom, type SceneName, type RoomKind } from './scene'
 
 const SIZES = [1920, 2560, 3840, 5120, 7680]
 const DEFAULT_SIZE = 3840
 const MIN_HEIGHT = 2160
 const storedSize = () => { try { const value = Number(localStorage.getItem('offora.office.width')); return SIZES.includes(value) ? value : DEFAULT_SIZE } catch { return DEFAULT_SIZE } }
+const FLOORS = ['wood', 'carpet', 'tile'] as const
 const FIGURE_SIZE = 130
 const ROOM_HEIGHT = 580
 const WALL_SCALE = 0.29
@@ -120,9 +121,10 @@ export default function Office({ members, conversations, speaking, speech, onSel
       if (!active) { app.destroy(true); return }
       initialized = true
       const textures = await Promise.all([1, 2, 3, 4, 5, 6].map(number => `/assets/people-v${number}.png`).map(path => Assets.load(path)))
-      const floorTexture = await Assets.load('/assets/floor-v1.png')
+      const floorTextures = Object.fromEntries(await Promise.all(FLOORS.map(async name => [name, await Assets.load(`/assets/floor-v2/${name}.png`)]))) as Record<typeof FLOORS[number], Texture>
       if (!active) return
       const scene = Object.fromEntries(await Promise.all([...SCENE_PROPS.map(name => [name, `/assets/scene-v1/${name}.png`]), ...OFFICE_PROPS.map(name => [name, `/assets/office-v2/${name}.png`])].map(async ([name, url]) => [name, await Assets.load(url)]))) as Record<SceneName, Texture>
+      for (const texture of [...textures, ...Object.values(floorTextures), ...Object.values(scene)]) { texture.source.autoGenerateMipmaps = true; texture.source.scaleMode = 'linear'; texture.source.updateMipmaps?.() }
       const parts = textures.map(texture => cutFrames(texture))
       sceneTextures = [...parts.flatMap(item => [...item.down, ...item.up, ...item.side])]
       motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -254,13 +256,21 @@ export default function Office({ members, conversations, speaking, speech, onSel
           return (nameCounts.get(name) ?? 0) > 1 ? `${name} ·${index + 1}` : name
         }
         const speakerRows = Math.ceil(speakers.length / speakersPerRow)
-        const height = Math.max(MIN_HEIGHT, ROOM_HEIGHT + 280 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRows * 190, benchRow(bench.rows - 1) + 180)
+        const height = Math.max(MIN_HEIGHT, ROOM_HEIGHT + 280 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRows * 190, stripBottom(bench.rows) + 70)
         world.current.height = height
         world.current.spawnY = ROOM_BOTTOM + 70
-        const floor = new TilingSprite({ texture: floorTexture, width, height: height - WALL_HEIGHT })
-        floor.y = WALL_HEIGHT
-        floor.zIndex = -3
-        app.stage.addChild(floor)
+        const laySurface = (kind: typeof FLOORS[number], x: number, y: number, w: number, h: number, z: number) => {
+          const surface = new TilingSprite({ texture: floorTextures[kind], width: w, height: h })
+          surface.position.set(x, y)
+          surface.zIndex = z
+          app.stage.addChild(surface)
+          return surface
+        }
+        laySurface('wood', 0, WALL_HEIGHT, width, height - WALL_HEIGHT, -3.2)
+        laySurface('carpet', 40, benchRow(0) - 190, width - 80, benchRow(bench.rows - 1) - benchRow(0) + 330, -3.1)
+        const carpetEdge = new Graphics().rect(40, benchRow(0) - 190, width - 80, benchRow(bench.rows - 1) - benchRow(0) + 330).stroke({ color: 0x8a6a45, width: 4 })
+        carpetEdge.zIndex = -3
+        app.stage.addChild(carpetEdge)
         const wall = new TilingSprite({ texture: scene['wall-tile'], width, height: WALL_HEIGHT })
         wall.tileScale.set(WALL_SCALE)
         wall.zIndex = -2
@@ -286,11 +296,12 @@ export default function Office({ members, conversations, speaking, speech, onSel
         const occupied = new Set([...seats.current.values()].map(index => `${bench.seats[index].x},${bench.seats[index].chair}`))
         for (const item of built.items) {
           const sprite = addSprite(scene[item.name], item.x, item.bottom, item.height, item.layer === 'rug' ? -1 : item.layer === 'top' ? 1000000 : item.bottom)
-          const blocked = item.solid ? footprint(item.name, sprite.x, sprite.y, sprite.width, sprite.height) : undefined
+          const blocked = item.solid ? footprint(item.name, sprite.x, sprite.y, sprite.height) : undefined
           if (blocked && !occupied.has(`${item.x},${item.bottom}`)) obstacles.push(blocked)
         }
         const ROOM_TINT: Record<RoomKind, number> = { pantry: 0xf5e6c4, meeting: 0xcfe0ea, lounge: 0xe8c7cf, focus: 0xd6e3cf }
         for (const room of built.rooms) {
+          if (room.kind !== 'lounge') laySurface(room.kind === 'pantry' ? 'tile' : 'carpet', room.x, ROOM_TOP, room.w, ROOM_BOTTOM - ROOM_TOP, -3)
           const tint = new Graphics().rect(room.x, ROOM_TOP, room.w, ROOM_BOTTOM - ROOM_TOP).fill({ color: ROOM_TINT[room.kind], alpha: 0.38 })
           tint.zIndex = -2.5
           app.stage.addChild(tint)
@@ -423,7 +434,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
               if (Math.hypot(ahead.x - at.x, ahead.y - at.y) > 0.5) face(move.rig, ahead.x - at.x, ahead.y - at.y)
             }
             move.person.position.set(at.x, at.y)
-            move.person.zIndex = move.rig.seated ? move.chair + 1 : at.y
+            move.person.zIndex = move.rig.seated ? move.chair - 1 : at.y
             positions.current.set(move.id, at)
             pose(move.rig, walking, now)
           }
