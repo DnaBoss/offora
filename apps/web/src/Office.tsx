@@ -92,7 +92,7 @@ function groupLayout(width: number, conversations: Conversation[]) {
   return { columns, perRow, stride: 255 + (Math.ceil(largest / perRow) - 1) * 190 }
 }
 
-export default function Office({ members, conversations, speaking, speech, onSelect, onSelectConversation, pauseMotion }: { members: Member[], conversations: Conversation[], speaking: string[], speech: Record<string, string>, onSelect: (id: string) => void, onSelectConversation: (id: string) => void, pauseMotion: boolean }) {
+export default function Office({ members, conversations, speech, onSelect, onSelectConversation, pauseMotion }: { members: Member[], conversations: Conversation[], speech: Record<string, string>, onSelect: (id: string) => void, onSelectConversation: (id: string) => void, pauseMotion: boolean }) {
   const root = useRef<HTMLDivElement>(null)
   const [loadError, setLoadError] = useState(false)
   const [attempt, setAttempt] = useState(0)
@@ -247,8 +247,6 @@ export default function Office({ members, conversations, speaking, speech, onSel
         app.stage.sortableChildren = true
         const layout = groupLayout(width, conversations)
         const groupColumns = layout.columns
-        const speakers = members.filter(member => member.presence !== 'offline' && speaking.includes(member.session_id) && !conversations.some(item => item.participants.includes(member.session_id)))
-        const speakersPerRow = Math.max(1, Math.floor(width / 160))
         const groupX = (slot: number) => width * (groupColumns === 1 ? 0.5 : slot % 2 === 0 ? 0.27 : 0.73)
         const moves: { id: string, person: Container, rig: Rig, path: Point[], total: number, seated: boolean, z: number, facing: SeatFacing }[] = []
         const obstacles: Rect[] = []
@@ -288,8 +286,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const name = shortNames.get(member.session_id) ?? ''
           return (nameCounts.get(name) ?? 0) > 1 ? `${name} ·${index + 1}` : name
         }
-        const speakerRows = Math.ceil(speakers.length / speakersPerRow)
-        const height = Math.max(MIN_HEIGHT, ROOM_HEIGHT + 280 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRows * 190, stripBottom(bench.rows) + 70)
+        const height = Math.max(MIN_HEIGHT, ROOM_HEIGHT + 280 + Math.ceil(conversations.length / groupColumns) * layout.stride, stripBottom(bench.rows) + 70)
         world.current.height = height
         world.current.spawnY = ROOM_BOTTOM + 70
         const laySurface = (kind: typeof FLOORS[number], x: number, y: number, w: number, h: number, z: number) => {
@@ -375,23 +372,19 @@ export default function Office({ members, conversations, speaking, speech, onSel
           const seat = { x: spot.x, y: spot.y }
           const discussionIndex = conversations.findIndex(item => item.participants.includes(member.session_id))
           const discussion = conversations[discussionIndex]
-          const isSpeaking = !discussion && member.presence !== 'offline' && speaking.includes(member.session_id)
           const slot = discussion ? discussionSlots.current.get(discussion.conversation_id) ?? 0 : 0
           const discussionCount = conversations.filter(item => item.participants.includes(member.session_id)).length
           const participantIndex = discussion ? discussion.participants.indexOf(member.session_id) : 0
           const participantRow = Math.floor(participantIndex / layout.perRow)
           const rowCount = discussion ? Math.min(layout.perRow, discussion.participants.length - participantRow * layout.perRow) : 1
-          const speakerIndex = speakers.findIndex(item => item.session_id === member.session_id)
-          const speakerRow = Math.floor(speakerIndex / speakersPerRow)
-          const speakersInRow = Math.min(speakersPerRow, speakers.length - speakerRow * speakersPerRow)
-          const x = discussion ? Math.max(75, Math.min(width - 75, groupX(slot) + (participantIndex % layout.perRow - (rowCount - 1) / 2) * 160)) : isSpeaking ? width * 0.5 + (speakerIndex % speakersPerRow - (speakersInRow - 1) / 2) * 160 : seat.x
-          const y = discussion ? ROOM_HEIGHT + 205 + Math.floor(slot / groupColumns) * layout.stride + participantRow * 190 : isSpeaking ? ROOM_HEIGHT + 150 + Math.ceil(conversations.length / groupColumns) * layout.stride + speakerRow * 190 : seat.y
+          const x = discussion ? Math.max(75, Math.min(width - 75, groupX(slot) + (participantIndex % layout.perRow - (rowCount - 1) / 2) * 160)) : seat.x
+          const y = discussion ? ROOM_HEIGHT + 205 + Math.floor(slot / groupColumns) * layout.stride + participantRow * 190 : seat.y
           const previous = positions.current.get(member.session_id) ?? { x, y }
           const person = new Container({ x: previous.x, y: previous.y, eventMode: 'static', cursor: 'pointer' })
           const look = appearances.current.get(member.session_id) ?? 0
           const rig = buildRig(parts[look], index * 1.7)
           person.addChild(rig.body)
-          const activity = discussionCount > 1 ? `（${discussionCount} 場）` : isSpeaking ? '（剛發話）' : ''
+          const activity = discussionCount > 1 ? `（${discussionCount} 場）` : ''
           const presence = member.presence === 'reconnecting' ? '（重連中）' : ''
           const label = new Text({ text: displayName(member, index), style: { fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold', fill: '#193241', stroke: { color: '#fff8e6', width: 4 } } })
           label.anchor.set(0.5, 0)
@@ -436,7 +429,7 @@ export default function Office({ members, conversations, speaking, speech, onSel
           card.on('pointertap', () => onSelect(member.session_id))
           app.stage.addChild(card)
           const path = grid.path(previous, { x, y })
-          moves.push({ id: member.session_id, person, rig, path, total: length(path), seated: !discussion && !isSpeaking, z: spot.z, facing: spot.facing })
+          moves.push({ id: member.session_id, person, rig, path, total: length(path), seated: !discussion, z: spot.z, facing: spot.facing })
         })
         const shortTitles = new Map(conversations.map(item => [item.conversation_id, shorten(item.summary, 10)]))
         const titleCounts = new Map<string, number>()
@@ -489,6 +482,6 @@ export default function Office({ members, conversations, speaking, speech, onSel
       motionPreference.addEventListener('change', motionChanged)
     })().catch(() => { if (active) setLoadError(true) })
     return () => { active = false; if (keyDown) window.removeEventListener('keydown', keyDown); if (keyUp) window.removeEventListener('keyup', keyUp); if (motionChanged) motionPreference?.removeEventListener('change', motionChanged); if (initialized) app.destroy(true); for (const texture of sceneTextures) texture.destroy(false); sceneTextures = [] }
-  }, [members, conversations, speaking, speech, onSelect, onSelectConversation, pauseMotion, attempt, size])
+  }, [members, conversations, speech, onSelect, onSelectConversation, pauseMotion, attempt, size])
   return <div className="office-canvas"><label className="office-size">辦公室寬度<select value={size} onChange={event => { const value = Number(event.target.value); setSize(value); try { localStorage.setItem('offora.office.width', String(value)) } catch {} }}>{SIZES.map(value => <option key={value} value={value}>{value}</option>)}</select></label><div className="office-stage" ref={root} aria-hidden="true" />{loadError && <div className="office-error" role="alert"><span>辦公室畫面載入失敗</span><button onClick={() => { setLoadError(false); setAttempt(value => value + 1) }}>重新載入畫面</button></div>}</div>
 }
