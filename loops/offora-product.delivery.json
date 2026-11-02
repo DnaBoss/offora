@@ -185,6 +185,10 @@
         "sha256": "bdbac68edcb05a9d5d4011a05395c177c38f682750fd1780ac525ee26df8cfe6"
       },
       "timeout_seconds": 120
+    },
+    "P8-S06": {
+      "kind": "internal",
+      "reason": "已由 PR #28、#29 經 GitHub Actions 部署上線，不另做部署包"
     }
   }
 }
