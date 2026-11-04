@@ -9,8 +9,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde_json::json;
-use sha2::{Digest, Sha256};
-use sqlx::PgPool;
 use std::{
     collections::HashMap,
     net::{IpAddr, SocketAddr},
@@ -20,9 +18,7 @@ use std::{
 
 const WINDOW: Duration = Duration::from_secs(60);
 const IP_LIMIT: u32 = 2000;
-const TOKEN_LIMIT: u32 = 1200;
 const SPACE_LIMIT: u32 = 1800;
-const JOIN_LIMIT: u32 = 20;
 const MAX_KEYS: usize = 4096;
 
 #[derive(Clone, Default)]
@@ -33,15 +29,13 @@ pub struct Limiter {
 #[derive(Clone)]
 pub struct Guard {
     limiter: Limiter,
-    pool: PgPool,
     trusted_proxies: Vec<IpAddr>,
 }
 
 impl Guard {
-    pub fn new(pool: PgPool, limiter: Limiter, trusted_proxies: Vec<IpAddr>) -> Self {
+    pub fn new(limiter: Limiter, trusted_proxies: Vec<IpAddr>) -> Self {
         Self {
             limiter,
-            pool,
             trusted_proxies,
         }
     }
@@ -77,24 +71,6 @@ impl Limiter {
     pub fn admit_space(&self, space: &str) -> bool {
         self.admit(&[(format!("space:{space}"), SPACE_LIMIT)], Instant::now())
     }
-    pub(crate) fn admit_mcp(&self, peer: &str, joining: bool) -> bool {
-        let mut keys = vec![(format!("ip:{peer}"), IP_LIMIT)];
-        if joining {
-            keys.push((format!("join:{peer}"), JOIN_LIMIT));
-        }
-        self.admit(&keys, Instant::now())
-    }
-    pub(crate) fn admit_socket(&self, peer: &str, hash: &[u8], space: &str) -> bool {
-        let key: String = hash.iter().map(|byte| format!("{byte:02x}")).collect();
-        self.admit(
-            &[
-                (format!("ip:{peer}"), IP_LIMIT),
-                (format!("credential:{key}"), TOKEN_LIMIT),
-                (format!("space:{space}"), SPACE_LIMIT),
-            ],
-            Instant::now(),
-        )
-    }
     fn admit(&self, keys: &[(String, u32)], now: Instant) -> bool {
         let Ok(mut entries) = self.entries.lock() else {
             return false;
@@ -120,6 +96,15 @@ impl Limiter {
 }
 
 pub async fn limit(State(guard): State<Guard>, request: Request, next: Next) -> Response {
+    let has_token = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .is_some_and(|v| v.len() == 64 && v.bytes().all(|c| c.is_ascii_hexdigit()));
+    if has_token {
+        return next.run(request).await;
+    }
     let peer = request
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
@@ -127,54 +112,18 @@ pub async fn limit(State(guard): State<Guard>, request: Request, next: Next) -> 
     let peer = client_ip(peer, request.headers(), &guard.trusted_proxies)
         .map(|ip| ip.to_string())
         .unwrap_or_else(|| "unknown".to_owned());
-    let mut keys = vec![(format!("ip:{peer}"), IP_LIMIT)];
-    let token = request
-        .headers()
-        .get(AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .filter(|v| v.len() == 64 && v.bytes().all(|c| c.is_ascii_hexdigit()));
-    if let Some(token) = token {
-        let digest = Sha256::digest(token.as_bytes());
-        let key: String = digest.iter().map(|b| format!("{b:02x}")).collect();
-        keys.push((format!("credential:{key}"), TOKEN_LIMIT));
-    }
-    if !guard.limiter.admit(&keys, Instant::now()) {
+    if !guard
+        .limiter
+        .admit(&[(format!("ip:{peer}"), IP_LIMIT)], Instant::now())
+    {
         return (StatusCode::TOO_MANY_REQUESTS, [(RETRY_AFTER, "60")], Json(json!({"error":{"code":"rate_limited","message":"請求過於頻繁，請稍後再試","retryable":true}}))).into_response();
     }
-    if let Some(token) = token {
-        let hash = Sha256::digest(token.as_bytes());
-        let space = sqlx::query_scalar::<_, String>("SELECT s.space_id FROM sessions s JOIN agent_credentials a ON a.id=s.credential_id AND a.space_id=s.space_id WHERE s.token_hash=$1 AND s.left_at IS NULL AND a.revoked_at IS NULL UNION ALL SELECT space_id FROM agent_credentials WHERE token_hash=$1 AND revoked_at IS NULL LIMIT 1")
-            .bind(hash.as_slice()).fetch_optional(&guard.pool).await;
-        match space {
-            Ok(Some(space)) if !guard.limiter.admit_space(&space) => return (StatusCode::TOO_MANY_REQUESTS, [(RETRY_AFTER, "60")], Json(json!({"error":{"code":"rate_limited","message":"此空間請求過於頻繁，請稍後再試","retryable":true}}))).into_response(),
-            Ok(_) => {},
-            Err(_) => { tracing::error!(code="rate_limit_identity_failed", "無法確認空間額度"); return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error":{"code":"database_unavailable","message":"暫時無法處理請求","retryable":true}}))).into_response(); }
-        }
-    }
-    let mut response = next.run(request).await;
-    if response.status() == StatusCode::TOO_MANY_REQUESTS {
-        response
-            .headers_mut()
-            .insert(RETRY_AFTER, axum::http::HeaderValue::from_static("60"));
-    }
-    response
+    next.run(request).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn mcp_joins_are_limited_per_address() {
-        let limiter = Limiter::default();
-        for _ in 0..JOIN_LIMIT {
-            assert!(limiter.admit_mcp("a", true));
-        }
-        assert!(!limiter.admit_mcp("a", true));
-        assert!(limiter.admit_mcp("a", false));
-        assert!(limiter.admit_mcp("b", true));
-    }
 
     use axum::{Router, body::Body, http::Request as HttpRequest, middleware, routing::get};
     use tower::ServiceExt;
@@ -246,12 +195,9 @@ mod tests {
             )
             .await?;
         assert_eq!(baseline.status(), StatusCode::OK);
-        let pool = sqlx::postgres::PgPoolOptions::new()
-            .connect_lazy("postgres://test:test@localhost/test")?;
         let router = unprotected.layer(middleware::from_fn_with_state(
             Guard {
                 limiter,
-                pool,
                 trusted_proxies: Vec::new(),
             },
             limit,

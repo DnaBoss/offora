@@ -6,7 +6,7 @@ use crate::{
 use axum::{
     Json,
     extract::{
-        ConnectInfo, Query, State, WebSocketUpgrade,
+        Query, State, WebSocketUpgrade,
         ws::{Message, WebSocket},
     },
     http::{
@@ -19,8 +19,8 @@ use rand::{RngCore, rngs::OsRng};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::Row;
+use std::collections::HashMap;
 use std::time::Duration;
-use std::{collections::HashMap, net::SocketAddr};
 
 pub async fn ticket(
     State(state): State<AppState>,
@@ -152,7 +152,6 @@ async fn issue(
 
 pub async fn connect(
     State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Query(query): Query<HashMap<String, String>>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
@@ -183,9 +182,6 @@ pub async fn connect(
         )
         .into_response();
     }
-    let peer = crate::limits::client_ip(Some(peer.ip()), &headers, &state.trusted_proxies)
-        .map(|ip| ip.to_string())
-        .unwrap_or_else(|| "unknown".into());
     match consume(&state, tickets[0]).await {
         Ok(Some(session)) => ws
             .protocols(["offora.v1"])
@@ -194,7 +190,7 @@ pub async fn connect(
             .on_failed_upgrade(|_| {
                 tracing::error!(code = "socket_upgrade_failed", "無法建立即時連線")
             })
-            .on_upgrade(move |socket| stream(socket, state, session, peer, watch_state)),
+            .on_upgrade(move |socket| stream(socket, state, session, watch_state)),
         Ok(None) => error(
             StatusCode::UNAUTHORIZED,
             "invalid_ticket",
@@ -247,13 +243,7 @@ async fn consume(state: &AppState, ticket: &str) -> Result<Option<SocketSession>
     }))
 }
 
-async fn stream(
-    mut socket: WebSocket,
-    state: AppState,
-    session: SocketSession,
-    peer: String,
-    watch_state: u8,
-) {
+async fn stream(mut socket: WebSocket, state: AppState, session: SocketSession, watch_state: u8) {
     let mut cursor = session.after;
     let mut changes = state.conversation_changes.subscribe();
     let mut members = state.member_changes.subscribe();
@@ -295,7 +285,7 @@ async fn stream(
                 Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {},
                 Some(Ok(Message::Close(_))) | None => return,
                 Some(Ok(Message::Text(text))) => {
-                    let response = handle_command(&state, &session, &peer, &text).await;
+                    let response = handle_command(&state, &session, &text).await;
                     if !send_frame(&mut socket, response).await { return; }
                 },
                 Some(Ok(_)) => { close_socket(&mut socket).await; return; },
@@ -324,12 +314,7 @@ async fn stream(
     }
 }
 
-async fn handle_command(
-    state: &AppState,
-    session: &SocketSession,
-    peer: &str,
-    text: &str,
-) -> Value {
+async fn handle_command(state: &AppState, session: &SocketSession, text: &str) -> Value {
     let frame: Value = match serde_json::from_str(text) {
         Ok(value) => value,
         Err(_) => {
@@ -352,16 +337,8 @@ async fn handle_command(
         return json!({"type":"error","error":{"code":"invalid_request","message":"請求識別碼不正確"}});
     };
     let body = object.get("body").cloned().unwrap_or(Value::Null);
-    let (status, response) = if !state
-        .limiter
-        .admit_socket(peer, &session.hash, &session.space)
+    let (status, response) = if object.get("operation").and_then(Value::as_str) == Some("mark_read")
     {
-        error(
-            StatusCode::TOO_MANY_REQUESTS,
-            "rate_limited",
-            "請求過於頻繁，請稍後再試",
-        )
-    } else if object.get("operation").and_then(Value::as_str) == Some("mark_read") {
         if let Some(message_id) = body
             .as_object()
             .filter(|value| value.len() == 1)

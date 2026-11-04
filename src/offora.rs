@@ -49,7 +49,6 @@ struct AppState {
     member_changes: tokio::sync::broadcast::Sender<(String, String)>,
     version: String,
     limiter: limits::Limiter,
-    trusted_proxies: Vec<IpAddr>,
     mcp: mcp::Sessions,
 }
 
@@ -116,7 +115,7 @@ pub fn app_with_trusted_proxies(
         .route("/api/v1/socket-ticket", post(sockets::ticket))
         .route("/api/v1/socket", get(sockets::connect))
         .route_layer(middleware::from_fn_with_state(
-            limits::Guard::new(pool.clone(), limiter.clone(), trusted_proxies.clone()),
+            limits::Guard::new(limiter.clone(), trusted_proxies.clone()),
             limits::limit,
         ));
     Router::new()
@@ -140,7 +139,6 @@ pub fn app_with_trusted_proxies(
             member_changes,
             version,
             limiter,
-            trusted_proxies,
             mcp: mcp::Sessions::default(),
         })
 }

@@ -2,7 +2,7 @@ use crate::{AppState, auto, conversations, events, messages, sessions};
 use axum::{
     Json,
     body::Bytes,
-    extract::{ConnectInfo, Path, Query, State},
+    extract::{Path, Query, State},
     http::{
         HeaderMap, HeaderValue, StatusCode,
         header::{AUTHORIZATION, HOST, ORIGIN},
@@ -14,7 +14,6 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
-    net::SocketAddr,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -790,7 +789,6 @@ async fn initialize(state: &AppState, key: &str, id: &Value, params: Option<&Val
 pub async fn post(
     State(state): State<AppState>,
     Path(key): Path<String>,
-    extensions: axum::http::Extensions,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
@@ -819,22 +817,6 @@ pub async fn post(
     else {
         return StatusCode::ACCEPTED.into_response();
     };
-    let peer = crate::limits::client_ip(
-        extensions
-            .get::<ConnectInfo<SocketAddr>>()
-            .map(|c| c.0.ip()),
-        &headers,
-        &state.trusted_proxies,
-    )
-    .map_or_else(|| "unknown".to_owned(), |ip| ip.to_string());
-    if !state.limiter.admit_mcp(&peer, method == "initialize") {
-        return (
-            StatusCode::TOO_MANY_REQUESTS,
-            [(axum::http::header::RETRY_AFTER, "60")],
-            Json(fail(&id, -32000, "請求過於頻繁，請稍後再試")),
-        )
-            .into_response();
-    }
     let params = request.get("params");
     if method == "initialize" {
         return initialize(&state, &key, &id, params).await;

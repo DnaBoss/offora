@@ -10,5 +10,6 @@
 - 程式不加註解。設定集中、SQL 參數化、錯誤結構化記錄，不記 token 與完整訊息內容。
 - 修改在 feature branch；提交前 bash scripts/check.sh；容器變更另跑 bash scripts/smoke.sh。不得把文件或健康檢查當產品驗收。
 - 不建立外部 repo、推送套件或公開服務，除非另有明確授權。部署沿用使用者授權，但必須先有目標與通過的測試環境。
+- 修改類任務的完成定義是已上線：程式改完、check.sh 與 smoke.sh 通過後，不停下來問，直接提交、開 PR 到 dev、檢查通過就合併，由 CD 部署，再核對 /version 等於該 commit，並以真實請求驗證修好的行為。只停在本機不算完成。
 
 - Rust 函式庫入口以套件名稱命名，例如 src/offora.rs，並在 Cargo.toml 的 [lib] path 指定；不使用 lib.rs。此命名慣例與 edition 無關，目前使用 edition 2024。
