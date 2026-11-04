@@ -225,7 +225,7 @@ export function benchItems(width: number, rows: number): Bench {
           { name: chair, x: mid - reach, bottom: cb, height: SIDE_CHAIR_HEIGHT, solid: true },
           { name: chair, x: mid + reach, bottom: cb, height: SIDE_CHAIR_HEIGHT, solid: true, flip: true }
         )
-        seats.push({ x: mid - reach, desk: y, card: y - 150, y: cb - 20, z: cb + 1, facing: 'right', chairX: mid - reach, chair: cb }, { x: mid + reach, desk: y, card: y - 150, y: cb - 20, z: cb + 1, facing: 'left', chairX: mid + reach, chair: cb })
+        seats.push({ x: mid - reach, desk: y, card: y - 150, y: cb - 6, z: cb + 1, facing: 'right', chairX: mid - reach, chair: cb }, { x: mid + reach, desk: y, card: y - 150, y: cb - 6, z: cb + 1, facing: 'left', chairX: mid + reach, chair: cb })
         cursor += span + 130 + hash(group * 17 + row * 5) % 110
         group++
         continue
