@@ -13,6 +13,10 @@
     "S2": {
       "kind": "internal",
       "reason": "實驗與研究，無部署內容"
+    },
+    "S3": {
+      "kind": "internal",
+      "reason": "規則寫入契約文件，程式在 S4"
     }
   }
 }
