@@ -9,6 +9,10 @@
     "S1-gate": {
       "kind": "internal",
       "reason": "已由 dev 的 CD 部署並核對 /version；整體 P9 驗收在 S7"
+    },
+    "S2": {
+      "kind": "internal",
+      "reason": "實驗與研究，無部署內容"
     }
   }
 }
