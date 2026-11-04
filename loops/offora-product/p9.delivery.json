@@ -25,6 +25,10 @@
     "S5": {
       "kind": "internal",
       "reason": "隨 dev CD 部署並核對 /version"
+    },
+    "S6": {
+      "kind": "internal",
+      "reason": "研究結論寫入文件，隨 dev 合併"
     }
   }
 }
