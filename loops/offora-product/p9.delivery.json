@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "task": "P9",
+  "project": "/home/cash/work_space/private/offora",
+  "steps": {
+    "S1": {
+      "kind": "stage"
+    },
+    "S1-gate": {
+      "kind": "internal",
+      "reason": "已由 dev 的 CD 部署並核對 /version；整體 P9 驗收在 S7"
+    }
+  }
+}
