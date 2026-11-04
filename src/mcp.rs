@@ -513,6 +513,25 @@ async fn describe(
     args: &Map<String, Value>,
 ) -> (StatusCode, Value) {
     let get = |key: &str| args.get(key).and_then(Value::as_str);
+    let mut ids = vec![session.session_id.as_str()];
+    if let Some(repo) = &session.repo {
+        ids.push(repo.session_id.as_str());
+    }
+    if auto::describe_session(
+        &state.pool,
+        &ids,
+        get("goal"),
+        get("computer"),
+        get("environment"),
+    )
+    .await
+    .is_err()
+    {
+        tracing::error!(
+            code = "mcp_describe_session_failed",
+            "無法記錄 session 簡介"
+        );
+    }
     match auto::describe(
         &state.pool,
         &session.key,
@@ -579,7 +598,7 @@ async fn set_repo(
             json!({"error":{"code":"join_failed","message":"連線已結束"}}),
         );
     }
-    if sqlx::query("UPDATE sessions t SET summary=s.summary, progress=s.progress FROM sessions s WHERE t.id=$1 AND s.id=$2")
+    if sqlx::query("UPDATE sessions t SET summary=s.summary, progress=s.progress, goal=s.goal, computer=s.computer, environment=s.environment FROM sessions s WHERE t.id=$1 AND s.id=$2")
         .bind(&room.session_id)
         .bind(&session.session_id)
         .execute(&state.pool)
@@ -587,6 +606,16 @@ async fn set_repo(
         .is_err()
     {
         tracing::error!(code = "mcp_copy_summary_failed", "無法同步摘要到 repo 辦公室");
+    }
+    if auto::set_session_repo(
+        &state.pool,
+        &[session.session_id.as_str(), room.session_id.as_str()],
+        &label,
+    )
+    .await
+    .is_err()
+    {
+        tracing::error!(code = "mcp_session_repo_failed", "無法記錄 session 的 repo");
     }
     if auto::link_repo(&state.pool, &session.key, &key, &label)
         .await

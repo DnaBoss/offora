@@ -71,6 +71,12 @@ assert not failed
 mine = {m["session_id"]: m for m in listing["sessions"]}
 assert mine[who["session_id"]]["progress"] == 57 and mine[who["session_id"]]["summary"] == "測試進度"
 assert len(mine) == 2
+assert mine[who["session_id"]]["computer"] is None and mine[who["session_id"]]["goal"] is None
+failed, _ = tool(key, a, "office_describe", {"goal": "測試目標", "computer": "測試機", "environment": "Linux"})
+assert not failed
+failed, listing = tool(key, b, "office_list_sessions")
+profile = {m["session_id"]: m for m in listing["sessions"]}[who["session_id"]]
+assert (profile["goal"], profile["computer"], profile["environment"]) == ("測試目標", "測試機", "Linux"), profile
 
 failed, sent = tool(key, a, "office_send_message", {"client_message_id": "m-" + secrets.token_hex(8), "text": "你好"})
 assert not failed
@@ -113,6 +119,7 @@ assert len(listing["sessions"]) == 2
 failed, listing = tool(key, a, "office_list_sessions")
 assert len([m for m in listing["sessions"] if m["room"] == "computer"]) == 3
 assert len([m for m in listing["sessions"] if m["room"] == "repo"]) == 2
+assert any(m["repo"] and repo_name in m["repo"] and m["computer"] == "測試機" for m in listing["sessions"]), listing
 
 failed, _ = tool(key, a, "office_update_summary", {"summary": "兩間同步", "progress": 33})
 assert not failed
