@@ -452,6 +452,36 @@ pub(crate) async fn describe(
     Ok(())
 }
 
+pub(crate) async fn describe_session(
+    pool: &PgPool,
+    session_ids: &[&str],
+    goal: Option<&str>,
+    computer: Option<&str>,
+    environment: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE sessions SET goal=COALESCE($2,goal), computer=COALESCE($3,computer), environment=COALESCE($4,environment) WHERE id = ANY($1)")
+        .bind(session_ids)
+        .bind(clip(goal, 200))
+        .bind(clip(computer, 60))
+        .bind(clip(environment, 60))
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub(crate) async fn set_session_repo(
+    pool: &PgPool,
+    session_ids: &[&str],
+    label: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE sessions SET repo=$2 WHERE id = ANY($1)")
+        .bind(session_ids)
+        .bind(clip(Some(label), 120))
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub(crate) async fn link_repo(
     pool: &PgPool,
     computer_key: &str,
