@@ -273,6 +273,13 @@ fn tool_list() -> Value {
             false
         ),
         tool(
+            "office_wake_command",
+            "取得一段 shell 指令，用背景方式執行；只有收到「給我」的訊息（回覆我的訊息、我參與的交談、內文含我的代號）時才結束並印出訊息，讓閒置的你被喚醒。結束後讀取訊息、處理，再重新呼叫本工具並重新背景執行。",
+            json!({}),
+            &[],
+            true
+        ),
+        tool(
             "office_update_summary",
             "更新自己正在做的事（一句話）與進度 0 到 100；不帶 progress 則進度不變。辦公室畫面會即時顯示。每次收到任務後，在執行任何其他工具之前先呼叫（進度 0），完成時再呼叫一次（進度 100）。",
             json!({"summary":text,"progress":int}),
@@ -374,6 +381,7 @@ async fn dispatch(
             json!({"session_id":session.session_id,"channel_id":channel}),
         ),
         "office_check_connection" => (StatusCode::OK, json!({"status":"reporting"})),
+        "office_wake_command" => wake_command(state, session, base).await,
         "office_watch_url" => (
             StatusCode::OK,
             json!({"url":format!("{base}/#office={}", session.key)}),
@@ -539,6 +547,40 @@ async fn declared(state: &AppState, session: &Session) -> Result<bool, sqlx::Err
         .fetch_optional(&state.pool)
         .await?;
     Ok(row.is_some_and(|r| sqlx::Row::try_get::<bool, _>(&r, "done").unwrap_or(false)))
+}
+
+async fn wake_command(state: &AppState, session: &Session, base: &str) -> (StatusCode, Value) {
+    let mut polls = String::new();
+    for (_, view) in views(session, None) {
+        let latest = match messages::load_since(
+            &state.pool,
+            &view.token,
+            &view.channel,
+            0,
+            1,
+            false,
+        )
+        .await
+        {
+            Ok(messages::Since::Records(_, _, _, latest)) => latest,
+            _ => {
+                tracing::error!(code = "mcp_wake_command_failed", "無法取得訊息序號");
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    json!({"error":{"code":"database_unavailable","message":"暫時無法產生喚醒指令"}}),
+                );
+            }
+        };
+        polls.push_str(&format!(
+            "f=\"${{TMPDIR:-/tmp}}/offora-wake-{c}\"; n=$(cat \"$f\" 2>/dev/null || echo {latest}); o=$(curl -sf --max-time 30 -H \"Authorization: Bearer {t}\" \"{base}/api/v1/messages/since?channel_id={c}&after_seq=$n&wait_ms=10000&for_me=true\"); case \"$o\" in \"\") sleep 5;; *'\"messages\":[]'*) ;; *) echo \"$o\" | sed -n 's/.*\"next_seq\":\\([0-9]*\\).*/\\1/p' > \"$f\"; echo \"$o\"; exit 0;; esac; ",
+            c = view.channel,
+            t = view.token,
+        ));
+    }
+    (
+        StatusCode::OK,
+        json!({"command":format!("while :; do {polls}done"),"run_in_background":true}),
+    )
 }
 
 async fn describe(

@@ -112,7 +112,7 @@ pub async fn since(
     };
     if query
         .keys()
-        .any(|k| !["channel_id", "after_seq", "limit", "wait_ms"].contains(&k.as_str()))
+        .any(|k| !["channel_id", "after_seq", "limit", "wait_ms", "for_me"].contains(&k.as_str()))
     {
         return error(StatusCode::BAD_REQUEST, "invalid_request", "查詢條件不正確");
     }
@@ -155,9 +155,10 @@ pub async fn since(
             }
         },
     };
+    let for_me = query.get("for_me").is_some_and(|v| v == "true");
     let deadline = tokio::time::Instant::now() + Duration::from_millis(wait_ms);
     let result = loop {
-        let result = load_since(&state.pool, token, channel, after, limit).await;
+        let result = load_since(&state.pool, token, channel, after, limit, for_me).await;
         if !matches!(&result, Ok(Since::Records(records, _, _, _)) if records.is_empty())
             || tokio::time::Instant::now() >= deadline
         {
@@ -202,15 +203,16 @@ pub(crate) enum Since {
     Records(Vec<Value>, i64, bool, i64),
 }
 
-async fn load_since(
+pub(crate) async fn load_since(
     pool: &PgPool,
     token: &str,
     channel: &str,
     after: i64,
     limit: i64,
+    for_me: bool,
 ) -> Result<Since, sqlx::Error> {
     let hash = Sha256::digest(token.as_bytes());
-    load_since_hash(pool, hash.as_slice(), channel, after, limit).await
+    load_since_hash(pool, hash.as_slice(), channel, after, limit, for_me).await
 }
 
 pub(crate) async fn load_since_hash(
@@ -219,14 +221,17 @@ pub(crate) async fn load_since_hash(
     channel: &str,
     after: i64,
     limit: i64,
+    for_me: bool,
 ) -> Result<Since, sqlx::Error> {
     let mut tx = pool.begin().await?;
-    let session = sqlx::query("SELECT s.space_id,s.credential_id FROM sessions s JOIN agent_credentials a ON a.id=s.credential_id AND a.space_id=s.space_id WHERE s.token_hash=$1 AND s.left_at IS NULL AND a.revoked_at IS NULL FOR SHARE OF s,a").bind(hash).fetch_optional(&mut *tx).await?;
+    let session = sqlx::query("SELECT s.id,s.code,s.space_id,s.credential_id FROM sessions s JOIN agent_credentials a ON a.id=s.credential_id AND a.space_id=s.space_id WHERE s.token_hash=$1 AND s.left_at IS NULL AND a.revoked_at IS NULL FOR SHARE OF s,a").bind(hash).fetch_optional(&mut *tx).await?;
     let Some(session) = session else {
         return Ok(Since::Invalid);
     };
     let space: String = session.try_get("space_id")?;
     let credential: String = session.try_get("credential_id")?;
+    let me: String = session.try_get("id")?;
+    let my_code: String = session.try_get("code")?;
     if sqlx::query("SELECT 1 FROM channel_grants WHERE space_id=$1 AND credential_id=$2 AND channel_id=$3 AND can_read FOR SHARE").bind(&space).bind(&credential).bind(channel).fetch_optional(&mut *tx).await?.is_none() { return Ok(Since::Forbidden); }
     let latest: Option<i64> = sqlx::query_scalar(
         "SELECT last_seq FROM channel_message_cursors WHERE space_id=$1 AND channel_id=$2",
@@ -238,7 +243,7 @@ pub(crate) async fn load_since_hash(
     if after > latest.unwrap_or(0) {
         return Ok(Since::InvalidCursor);
     }
-    let rows = sqlx::query("SELECT d.seq,m.id,m.session_id,s.role AS actor_role,s.code AS actor_code,COALESCE((SELECT jsonb_agg(jsonb_build_object('session_id',r.session_id,'role',rs.role,'code',rs.code) ORDER BY r.read_at,r.session_id) FROM message_reads r JOIN sessions rs ON rs.id=r.session_id AND rs.space_id=r.space_id WHERE r.message_id=m.id AND r.space_id=m.space_id),'[]'::jsonb) AS readers,LEFT(original.payload->>'text',100) AS reply_excerpt,m.payload,m.reply_to,m.conversation_id,m.received_at::text AS received_at FROM message_delivery d JOIN messages m ON m.id=d.message_id JOIN sessions s ON s.id=m.session_id AND s.space_id=m.space_id LEFT JOIN messages original ON original.id=m.reply_to AND original.space_id=m.space_id AND original.channel_id=m.channel_id WHERE d.space_id=$1 AND d.channel_id=$2 AND d.seq>$3 ORDER BY d.seq LIMIT $4").bind(&space).bind(channel).bind(after).bind(limit+1).fetch_all(&mut *tx).await?;
+    let rows = sqlx::query("SELECT d.seq,m.id,m.session_id,s.role AS actor_role,s.code AS actor_code,COALESCE((SELECT jsonb_agg(jsonb_build_object('session_id',r.session_id,'role',rs.role,'code',rs.code) ORDER BY r.read_at,r.session_id) FROM message_reads r JOIN sessions rs ON rs.id=r.session_id AND rs.space_id=r.space_id WHERE r.message_id=m.id AND r.space_id=m.space_id),'[]'::jsonb) AS readers,LEFT(original.payload->>'text',100) AS reply_excerpt,m.payload,m.reply_to,m.conversation_id,m.received_at::text AS received_at FROM message_delivery d JOIN messages m ON m.id=d.message_id JOIN sessions s ON s.id=m.session_id AND s.space_id=m.space_id LEFT JOIN messages original ON original.id=m.reply_to AND original.space_id=m.space_id AND original.channel_id=m.channel_id WHERE d.space_id=$1 AND d.channel_id=$2 AND d.seq>$3 AND (NOT $5 OR (m.session_id<>$6 AND (original.session_id=$6 OR EXISTS(SELECT 1 FROM conversation_participants cp WHERE cp.space_id=m.space_id AND cp.conversation_id=m.conversation_id AND cp.session_id=$6) OR position(lower($7) IN lower(m.payload->>'text'))>0))) ORDER BY d.seq LIMIT $4").bind(&space).bind(channel).bind(after).bind(limit+1).bind(for_me).bind(&me).bind(&my_code).fetch_all(&mut *tx).await?;
     let more = rows.len() > limit as usize;
     let mut records = Vec::new();
     let mut next = after;
