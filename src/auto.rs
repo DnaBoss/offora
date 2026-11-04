@@ -158,7 +158,7 @@ pub(crate) async fn new_agent(
         return Ok(Err(Refusal::Busy));
     };
     let count: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM agent_credentials WHERE space_id=$1 AND revoked_at IS NULL",
+        "SELECT count(*) FROM agent_credentials a WHERE a.space_id=$1 AND a.revoked_at IS NULL AND (NOT EXISTS (SELECT 1 FROM sessions s WHERE s.credential_id=a.id AND s.space_id=a.space_id) OR EXISTS (SELECT 1 FROM sessions s WHERE s.credential_id=a.id AND s.space_id=a.space_id AND s.left_at IS NULL AND COALESCE(s.last_heartbeat_at, s.joined_at) > now()-interval '1 hour'))",
     )
     .bind(&office.space)
     .fetch_one(&mut *tx)
