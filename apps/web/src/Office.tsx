@@ -134,7 +134,7 @@ export default function Office({ members, conversations, speech, onSelect, onSel
       element.appendChild(app.canvas)
       const player = new Container({ eventMode: 'none' })
       const playerRig = buildRig(parts[5], 3.1, 0xbfe3ff)
-      const playerLabel = new Text({ text: '你（觀察者）', style: { fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold', fill: '#193241', stroke: { color: '#bfe3ff', width: 4 } } })
+      const playerLabel = new Text({ text: '你', style: { fontFamily: 'sans-serif', fontSize: 13, fontWeight: 'bold', fill: '#193241', stroke: { color: '#bfe3ff', width: 4 } } })
       playerLabel.anchor.set(0.5, 0)
       playerLabel.y = 4
       player.addChild(playerRig.body, playerLabel)
