@@ -58,6 +58,7 @@ const MERGED: [&str; 4] = [
     "office_read_messages",
 ];
 const GATED: [&str; 2] = ["office_send_message", "office_begin_conversation"];
+const SEND_LIMIT_PER_MINUTE: i64 = 12;
 const MAX_REPO_URL: usize = 300;
 
 fn repo_rest(url: &str) -> Option<String> {
@@ -527,6 +528,21 @@ async fn call(
             }
         }
     }
+    if name == "office_send_message" {
+        match sent_recently(state, session).await {
+            Ok(count) if count >= SEND_LIMIT_PER_MINUTE => {
+                return refused(
+                    "rate_limited",
+                    "一分鐘內發話太多次，請等一下，並確認不是在和另一個 AI 互相無限回覆",
+                );
+            }
+            Ok(_) => {}
+            Err(_) => {
+                tracing::error!(code = "mcp_send_rate_check_failed", "無法檢查發話頻率");
+                return refused("database_unavailable", "暫時無法檢查發話頻率");
+            }
+        }
+    }
     let (status, body) = if name == "office_set_repo" {
         set_repo(state, sid, session, &args).await
     } else if name == "office_describe" {
@@ -539,6 +555,19 @@ async fn call(
 
 fn refused(code: &str, message: &str) -> Value {
     json!({"content":[{"type":"text","text":json!({"error":{"code":code,"message":message}}).to_string()}],"isError":true})
+}
+
+async fn sent_recently(state: &AppState, session: &Session) -> Result<i64, sqlx::Error> {
+    let ids: Vec<String> = views(session, None)
+        .into_iter()
+        .map(|(_, view)| view.session_id)
+        .collect();
+    sqlx::query_scalar(
+        "SELECT count(*) FROM messages WHERE session_id = ANY($1) AND received_at > now() - interval '60 seconds'",
+    )
+    .bind(&ids)
+    .fetch_one(&state.pool)
+    .await
 }
 
 async fn declared(state: &AppState, session: &Session) -> Result<bool, sqlx::Error> {
