@@ -29,6 +29,10 @@
     "S6": {
       "kind": "internal",
       "reason": "研究結論寫入文件，隨 dev 合併"
+    },
+    "S7": {
+      "kind": "internal",
+      "reason": "驗收記錄，隨 dev 合併；程式已於 S1–S5 上線"
     }
   }
 }
