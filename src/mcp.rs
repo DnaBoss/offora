@@ -659,8 +659,17 @@ async fn join_room(state: &AppState, key: &str, model: &str) -> Result<Room, Sta
         let code = format!("{model}-{}", random_hex(3));
         let (office, token) = match auto::new_agent(&state.pool, key_hash.as_slice()).await {
             Ok(Ok(v)) => v,
-            Ok(Err(auto::Refusal::Full)) => return Err(StatusCode::TOO_MANY_REQUESTS),
-            Ok(Err(auto::Refusal::Busy)) => return Err(StatusCode::SERVICE_UNAVAILABLE),
+            Ok(Err(auto::Refusal::Full)) => {
+                tracing::warn!(code = "mcp_join_refused_full", "辦公室人數已滿，拒絕加入");
+                return Err(StatusCode::TOO_MANY_REQUESTS);
+            }
+            Ok(Err(auto::Refusal::Busy)) => {
+                tracing::warn!(
+                    code = "mcp_join_refused_busy",
+                    "等待加入的辦公室太多，拒絕加入"
+                );
+                return Err(StatusCode::SERVICE_UNAVAILABLE);
+            }
             Err(_) => {
                 tracing::error!(code = "mcp_join_failed", "無法加入辦公室");
                 return Err(StatusCode::SERVICE_UNAVAILABLE);
