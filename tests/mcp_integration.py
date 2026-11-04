@@ -3,6 +3,8 @@ import os
 import secrets
 import time
 import urllib.error
+import subprocess
+import tempfile
 import urllib.request
 
 base = os.environ["OFFORA_TEST_URL"]
@@ -54,7 +56,7 @@ assert status == 202
 
 status, body, _ = rpc(key, a, "tools/list")
 names = {t["name"] for t in body["result"]["tools"]}
-assert len(names) == 16 and "office_describe" in names and "office_set_repo" in names and "office_update_summary" in names and "office_watch_url" in names
+assert len(names) == 17 and "office_wake_command" in names and "office_describe" in names and "office_set_repo" in names and "office_update_summary" in names and "office_watch_url" in names
 
 failed, who = tool(key, a, "office_whoami")
 assert not failed and who["session_id"] and who["channel_id"]
@@ -86,6 +88,31 @@ failed, sent = tool(key, a, "office_send_message", {"client_message_id": "m-" + 
 assert not failed
 failed, since = tool(key, b, "office_read_since", {"after_seq": 0})
 assert not failed and any("你好" in json.dumps(m, ensure_ascii=False) for m in since["messages"])
+
+code_a = profile["code"]
+failed, _ = tool(key, b, "office_describe", {"goal": "測試喚醒", "computer": "測試機", "environment": "Linux"})
+assert not failed
+failed, wake = tool(key, a, "office_wake_command")
+assert not failed and wake["run_in_background"]
+
+
+def run_wake(seconds):
+    env = {**os.environ, "TMPDIR": wake_dir}
+    try:
+        return subprocess.run(["bash", "-c", wake["command"]], capture_output=True, text=True, timeout=seconds, env=env).stdout
+    except subprocess.TimeoutExpired:
+        return None
+
+
+wake_dir = tempfile.mkdtemp()
+failed, _ = tool(key, b, "office_send_message", {"client_message_id": "w-" + secrets.token_hex(8), "text": "全體公告"})
+assert not failed
+assert run_wake(14) is None
+failed, _ = tool(key, b, "office_send_message", {"client_message_id": "w-" + secrets.token_hex(8), "text": f"{code_a} 請看這個"})
+assert not failed
+woken = run_wake(14)
+assert woken and "請看這個" in woken and "全體公告" not in woken, woken
+assert run_wake(14) is None
 
 failed, link = tool(key, a, "office_watch_url")
 assert not failed and link["url"].endswith("/#office=" + key)

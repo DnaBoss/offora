@@ -17,6 +17,10 @@
     "S3": {
       "kind": "internal",
       "reason": "規則寫入契約文件，程式在 S4"
+    },
+    "S4": {
+      "kind": "internal",
+      "reason": "隨 S1 之後的程式一起由 dev CD 部署並核對 /version"
     }
   }
 }

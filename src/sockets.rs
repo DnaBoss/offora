@@ -260,7 +260,7 @@ async fn stream(mut socket: WebSocket, state: AppState, session: SocketSession, 
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
                 };
                 if relevant {
-                    match load_since_hash(&state.pool, &session.hash, &session.channel, cursor, 1).await {
+                    match load_since_hash(&state.pool, &session.hash, &session.channel, cursor, 1, false).await {
                         Ok(Since::Records(..)) => if !send_frame(&mut socket, json!({"type":"member_changed"})).await { return; },
                         Ok(_) => { close_socket(&mut socket).await; return; },
                         Err(_) => { tracing::error!(code="socket_read_failed", "即時讀取失敗"); close_socket(&mut socket).await; return; }
@@ -274,7 +274,7 @@ async fn stream(mut socket: WebSocket, state: AppState, session: SocketSession, 
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
                 };
                 if relevant {
-                    match load_since_hash(&state.pool, &session.hash, &session.channel, cursor, 1).await {
+                    match load_since_hash(&state.pool, &session.hash, &session.channel, cursor, 1, false).await {
                         Ok(Since::Records(..)) => if !send_frame(&mut socket, json!({"type":"conversation_changed"})).await { return; },
                         Ok(_) => { close_socket(&mut socket).await; return; },
                         Err(_) => { tracing::error!(code="socket_read_failed", "即時讀取失敗"); close_socket(&mut socket).await; return; }
@@ -300,7 +300,7 @@ async fn stream(mut socket: WebSocket, state: AppState, session: SocketSession, 
                 },
                 Ok(EventSince::Invalid | EventSince::Forbidden | EventSince::InvalidCursor) => { close_socket(&mut socket).await; return; },
                 Err(_) => { tracing::error!(code="socket_events_failed", "事件即時讀取失敗"); close_socket(&mut socket).await; return; }
-            } } else { match load_since_hash(&state.pool, &session.hash, &session.channel, cursor, 200).await {
+            } } else { match load_since_hash(&state.pool, &session.hash, &session.channel, cursor, 200, false).await {
                 Ok(Since::Records(records, next, more, latest)) => {
                     if !records.is_empty() {
                         if !send_frame(&mut socket, json!({"type":"messages","messages":records,"next_seq":next,"has_more":more,"latest_seq":latest})).await { return; }
