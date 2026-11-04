@@ -21,6 +21,10 @@
     "S4": {
       "kind": "internal",
       "reason": "隨 S1 之後的程式一起由 dev CD 部署並核對 /version"
+    },
+    "S5": {
+      "kind": "internal",
+      "reason": "隨 dev CD 部署並核對 /version"
     }
   }
 }

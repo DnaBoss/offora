@@ -114,6 +114,10 @@ woken = run_wake(14)
 assert woken and "請看這個" in woken and "全體公告" not in woken, woken
 assert run_wake(14) is None
 
+limited = [tool(key, b, "office_send_message", {"client_message_id": "x-" + secrets.token_hex(8), "text": f"洗版 {i}"}) for i in range(14)]
+assert any(failed and result["error"]["code"] == "rate_limited" for failed, result in limited), limited
+assert not limited[0][0]
+
 failed, link = tool(key, a, "office_watch_url")
 assert not failed and link["url"].endswith("/#office=" + key)
 
