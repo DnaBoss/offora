@@ -72,8 +72,12 @@ mine = {m["session_id"]: m for m in listing["sessions"]}
 assert mine[who["session_id"]]["progress"] == 57 and mine[who["session_id"]]["summary"] == "測試進度"
 assert len(mine) == 2
 assert mine[who["session_id"]]["computer"] is None and mine[who["session_id"]]["goal"] is None
+failed, refused = tool(key, a, "office_send_message", {"client_message_id": "g-" + secrets.token_hex(8), "text": "未登記"})
+assert failed and refused["error"]["code"] == "profile_required", refused
 failed, _ = tool(key, a, "office_describe", {"goal": "測試目標", "computer": "測試機", "environment": "Linux"})
 assert not failed
+failed, listing = tool(key, b, "office_list_sessions", {"online": True})
+assert not failed and len(listing["sessions"]) == 2
 failed, listing = tool(key, b, "office_list_sessions")
 profile = {m["session_id"]: m for m in listing["sessions"]}[who["session_id"]]
 assert (profile["goal"], profile["computer"], profile["environment"]) == ("測試目標", "測試機", "Linux"), profile

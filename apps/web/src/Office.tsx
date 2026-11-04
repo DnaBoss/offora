@@ -410,7 +410,7 @@ export default function Office({ members, conversations, speech, onSelect, onSel
           }
           person.on('pointertap', () => onSelect(member.session_id))
           app.stage.addChild(person)
-          const note = new Text({ text: member.summary ? shorten(member.summary, 30) : '尚未回報工作', style: { fontFamily: 'sans-serif', fontSize: 12, fill: member.summary ? '#193241' : '#7d8b92', wordWrap: true, wordWrapWidth: 122, breakWords: true, lineHeight: 15 } })
+          const note = new Text({ text: member.summary ? shorten(member.summary, 30) + (member.repo ? '\n' + shorten(member.repo, 24) : '') : '尚未回報工作', style: { fontFamily: 'sans-serif', fontSize: 12, fill: member.summary ? '#193241' : '#7d8b92', wordWrap: true, wordWrapWidth: 122, breakWords: true, lineHeight: 15 } })
           note.position.set(-61, 6)
           const cardHeight = 12 + note.height + (member.progress !== null ? 20 : 0)
           const card = new Container({ x: spot.x, y: spot.card - cardHeight, eventMode: 'static', cursor: 'pointer' })

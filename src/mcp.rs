@@ -57,6 +57,7 @@ const MERGED: [&str; 4] = [
     "office_list_sessions",
     "office_read_messages",
 ];
+const GATED: [&str; 2] = ["office_send_message", "office_begin_conversation"];
 const MAX_REPO_URL: usize = 300;
 
 fn repo_rest(url: &str) -> Option<String> {
@@ -245,8 +246,8 @@ fn tool_list() -> Value {
         ),
         tool(
             "office_list_sessions",
-            "查詢目前頻道可見的成員及其 session 識別碼；有 next_cursor 時帶 cursor 查下一頁。",
-            json!({"cursor":text}),
+            "查詢目前頻道可見的成員，含 repo、電腦、目標、進度與 session 識別碼；online 設為 true 只列線上的；有 next_cursor 時帶 cursor 查下一頁。",
+            json!({"cursor":text,"online":{"type":"boolean"}}),
             &[],
             true
         ),
@@ -335,6 +336,7 @@ fn query(
         match args.get(*key) {
             Some(Value::String(v)) => map.insert((*key).to_owned(), v.clone()),
             Some(Value::Number(v)) => map.insert((*key).to_owned(), v.to_string()),
+            Some(Value::Bool(v)) => map.insert((*key).to_owned(), v.to_string()),
             _ => None,
         };
     }
@@ -415,9 +417,14 @@ async fn dispatch(
             )
             .await,
         ),
-        "office_list_sessions" => {
-            plain(sessions::list(st, headers, Query(query(session, args, &["cursor"], &[]))).await)
-        }
+        "office_list_sessions" => plain(
+            sessions::list(
+                st,
+                headers,
+                Query(query(session, args, &["cursor", "online"], &[])),
+            )
+            .await,
+        ),
         "office_mark_read" => match args.get("message_id").and_then(Value::as_str) {
             Some(id) => plain(messages::mark_read(st, Path(id.to_owned()), headers).await),
             None => missing("message_id"),
@@ -497,6 +504,21 @@ async fn call(
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
+    if GATED.contains(&name) {
+        match declared(state, session).await {
+            Ok(true) => {}
+            Ok(false) => {
+                return refused(
+                    "profile_required",
+                    "請先用 office_describe 表明任務、電腦與環境，在 git repo 內再用 office_set_repo，並用 office_update_summary 回報進度，之後才能發話",
+                );
+            }
+            Err(_) => {
+                tracing::error!(code = "mcp_profile_check_failed", "無法檢查身分登記");
+                return refused("database_unavailable", "暫時無法檢查身分登記");
+            }
+        }
+    }
     let (status, body) = if name == "office_set_repo" {
         set_repo(state, sid, session, &args).await
     } else if name == "office_describe" {
@@ -505,6 +527,18 @@ async fn call(
         routed(state, session, name, &args, base).await
     };
     json!({"content":[{"type":"text","text":body.to_string()}],"isError":!status.is_success()})
+}
+
+fn refused(code: &str, message: &str) -> Value {
+    json!({"content":[{"type":"text","text":json!({"error":{"code":code,"message":message}}).to_string()}],"isError":true})
+}
+
+async fn declared(state: &AppState, session: &Session) -> Result<bool, sqlx::Error> {
+    let row = sqlx::query("SELECT (goal IS NOT NULL) AS done FROM sessions WHERE id=$1")
+        .bind(&session.session_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    Ok(row.is_some_and(|r| sqlx::Row::try_get::<bool, _>(&r, "done").unwrap_or(false)))
 }
 
 async fn describe(

@@ -324,7 +324,7 @@ pub async fn list(
     };
     if query
         .keys()
-        .any(|key| key != "channel_id" && key != "cursor")
+        .any(|key| key != "channel_id" && key != "cursor" && key != "online")
     {
         return error(StatusCode::BAD_REQUEST, "invalid_request", "請提供頻道");
     }
@@ -339,7 +339,8 @@ pub async fn list(
         Some(value) if !value.trim().is_empty() && value.len() <= 64 => Some(value.as_str()),
         Some(_) => return error(StatusCode::BAD_REQUEST, "invalid_cursor", "查詢位置不正確"),
     };
-    match list_members(&state.pool, token, channel, cursor).await {
+    let online = query.get("online").is_some_and(|v| v == "true");
+    match list_members(&state.pool, token, channel, cursor, online).await {
         Ok(Members::Invalid) => error(
             StatusCode::UNAUTHORIZED,
             "invalid_credential",
@@ -372,6 +373,7 @@ async fn list_members(
     token: &str,
     channel: &str,
     cursor: Option<&str>,
+    online: bool,
 ) -> Result<Members, sqlx::Error> {
     let mut tx = pool.begin().await?;
     let hash = Sha256::digest(token.as_bytes());
@@ -382,8 +384,8 @@ async fn list_members(
     let space_id: String = session.try_get("space_id")?;
     let credential_id: String = session.try_get("credential_id")?;
     if sqlx::query("SELECT 1 FROM channel_grants WHERE space_id=$1 AND credential_id=$2 AND channel_id=$3 AND can_read FOR SHARE").bind(&space_id).bind(&credential_id).bind(channel).fetch_optional(&mut *tx).await?.is_none() { return Ok(Members::Forbidden); }
-    let rows = sqlx::query("SELECT s.id,a.agent_id,ag.name AS agent_name,s.role,s.code,s.model,s.summary,s.progress,s.goal,s.computer,s.environment,s.repo,s.heartbeat_seq,s.last_heartbeat_at::text AS last_heartbeat_at,CASE WHEN s.last_heartbeat_at IS NULL THEN 'unknown' WHEN s.last_heartbeat_at > now()-interval '30 seconds' THEN 'online' WHEN s.last_heartbeat_at > now()-interval '90 seconds' THEN 'reconnecting' ELSE 'offline' END AS presence FROM sessions s JOIN agent_credentials a ON a.id=s.credential_id AND a.space_id=s.space_id JOIN agents ag ON ag.id=a.agent_id JOIN channel_grants g ON g.space_id=s.space_id AND g.credential_id=a.id WHERE s.space_id=$1 AND g.channel_id=$2 AND g.can_read AND s.left_at IS NULL AND NOT s.is_observer AND a.revoked_at IS NULL AND ($3::text IS NULL OR s.code > $3) ORDER BY s.code LIMIT 201")
-        .bind(&space_id).bind(channel).bind(cursor).fetch_all(&mut *tx).await?;
+    let rows = sqlx::query("SELECT s.id,a.agent_id,ag.name AS agent_name,s.role,s.code,s.model,s.summary,s.progress,s.goal,s.computer,s.environment,s.repo,s.heartbeat_seq,s.last_heartbeat_at::text AS last_heartbeat_at,CASE WHEN s.last_heartbeat_at IS NULL THEN 'unknown' WHEN s.last_heartbeat_at > now()-interval '30 seconds' THEN 'online' WHEN s.last_heartbeat_at > now()-interval '90 seconds' THEN 'reconnecting' ELSE 'offline' END AS presence FROM sessions s JOIN agent_credentials a ON a.id=s.credential_id AND a.space_id=s.space_id JOIN agents ag ON ag.id=a.agent_id JOIN channel_grants g ON g.space_id=s.space_id AND g.credential_id=a.id WHERE s.space_id=$1 AND g.channel_id=$2 AND g.can_read AND s.left_at IS NULL AND NOT s.is_observer AND a.revoked_at IS NULL AND ($3::text IS NULL OR s.code > $3) AND (NOT $4 OR s.last_heartbeat_at IS NULL OR s.last_heartbeat_at > now()-interval '90 seconds') ORDER BY s.code LIMIT 201")
+        .bind(&space_id).bind(channel).bind(cursor).bind(online).fetch_all(&mut *tx).await?;
     let has_more = rows.len() > 200;
     let mut members = Vec::new();
     for row in rows.into_iter().take(200) {
