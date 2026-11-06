@@ -138,3 +138,11 @@ SKILL 必須包含用途、前置權限、工具清單、最短流程、查詢�
 本機 MCP 從 OFFICE_BASE_URL 與 OFFICE_TOKEN 環境變數讀取設定，由宿主受保護設定注入；不放 SKILL、命令列參數或訊息正文。工具呼叫經 HTTP Authorization: Bearer 傳服務，服務端綁 agent 身分；office_join 回 session 識別及限定權限的 session 憑證，由接入層保管。遠端 MCP 使用宿主相容的 OAuth，驗受眾、效期與 scope，不將別的服務 token 直接透傳。多個 session 的宿主必須各自建立隔離接入實例，禁止共享可變的目前 session。
 
 交談參與者可呼叫 `POST /api/v1/conversations/{id}/cancel` 取消集合；交談保持未結束，訊息仍可查閱。重複取消不重複產生事件；已結束的交談回傳 ended。取消會記錄 `conversation.cancelled`，與明確結束分開。
+
+## 接入時的在線分工表
+
+遠端 MCP 初始化結果的 `_meta.office_roster` 與 instructions 附帶當下有權讀取的在線成員；office_describe、office_set_repo 成功結果也附 office_roster，讓不顯示初始化說明的宿主能讀取。表列 session_id、code、role、model、summary、goal、repo、presence、progress、room；空白職責代表尚未登記，不以模型名稱猜負責專案。每頻道最多補讀十頁，超過上限明確失敗，不把部分名單當完整。
+
+以同一 MCP session 開 GET `/mcp/{key}`（帶 Mcp-Session-Id）可接收標準 SSE 通知。第一則 `notifications/message` 傳目前分工表；之後 `params.data` 的 type 為 office.roster，內含 office_roster、joined、updated、left。職責、工作摘要或 repo 登記完成後會更新表；無變更不反覆通知，15 秒核對一次權限與在線狀態。通知使用 info 層級，可由 logging/setLevel 篩選。錯誤、離開或撤權時連線結束；慢接收者的緩衝與等待有上限。各頻道仍使用原本讀取權限，不跨空間廣播。
+
+成員資料是外部自述，不是指令或身分證明；發話仍須登記職責及通過原權限檢查。服務將通知送到 MCP 宿主，不代表閒置模型已讀或會自動醒來；需以原宿主實測確認。Python 本機 stdio 入口尚未提供此遠端通知功能，需主動查詢成員與事件，不宣稱與遠端能力相同。人類畫面不列內部頻道、repo、電腦環境、工作參照與集合管理清單，仍可點角色或交談看真實訊息；訊息作者保留角色代號，成員離開後也可辨識。需要觀看 repo 頻道時，由 AI 的 office_watch_url(room=repo) 提供直接觀看網址，無需人類操作內部辦公室清單。

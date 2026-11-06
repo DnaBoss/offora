@@ -128,7 +128,7 @@ pub fn app_with_trusted_proxies(
         .route(
             "/mcp/{key}",
             post(mcp::post)
-                .get(|| async { StatusCode::METHOD_NOT_ALLOWED })
+                .get(mcp::get)
                 .delete(mcp::delete)
                 .layer(axum::extract::DefaultBodyLimit::max(65536)),
         )

@@ -872,6 +872,7 @@ dependencies = [
  "sha2",
  "sqlx",
  "tokio",
+ "tokio-stream",
  "tower",
  "tower-http",
  "tracing",

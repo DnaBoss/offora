@@ -49,7 +49,7 @@ status, body, a = initialize(key, "claude-code")
 assert status == 200 and a, (status, body)
 assert body["result"]["protocolVersion"] == "2025-06-18"
 assert "office_update_summary" in body["result"]["instructions"]
-assert body["result"]["capabilities"] == {"tools": {}}
+assert body["result"]["capabilities"] == {"tools": {}, "logging": {}}
 
 status, _, _ = post(key, {"jsonrpc": "2.0", "method": "notifications/initialized"}, a)
 assert status == 202
@@ -230,7 +230,7 @@ try:
     urllib.request.urlopen(request, timeout=5)
     raise AssertionError("GET unexpectedly succeeded")
 except urllib.error.HTTPError as error:
-    assert error.code == 405
+    assert error.code == 400
 status, body, _ = rpc(key, a, "no/such")
 assert status == 200 and body["error"]["code"] == -32601
 
