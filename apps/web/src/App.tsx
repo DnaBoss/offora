@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Office from './Office'
 import { api, ApiError } from './api'
 import type { Conversation, Member, Message } from './types'
@@ -13,29 +13,12 @@ function savedConnection(): { token: string, channel: string, observer?: boolean
   } catch { return null }
 }
 
-type OfficeRoom = { key: string, kind: 'computer' | 'repo', name: string | null, goal: string | null, computer: string | null, environment: string | null, repo: string | null }
-
-async function fetchRooms(key: string): Promise<OfficeRoom[]> {
-  const response = await fetch('/api/v1/auto/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ office_key: key }) })
-  if (!response.ok) return []
-  return (await response.json()).rooms ?? []
-}
-
-function roomTitle(room: OfficeRoom) {
-  return room.name || room.goal || (room.kind === 'repo' ? room.repo : room.computer) || (room.kind === 'repo' ? '專案辦公室' : '這台電腦的辦公室')
-}
-
-function roomIntro(room: OfficeRoom) {
-  const parts = [room.goal && `任務：${room.goal}`, room.computer && `電腦：${room.computer}`, room.environment && `環境：${room.environment}`, room.repo && `repo：${room.repo}`].filter(Boolean)
-  return parts.length ? parts.join('・') : room.kind === 'repo' ? '同一個 repo 的 AI' : '同一台電腦的 AI'
-}
-
 export default function App() {
   const [saved] = useState(savedConnection)
   const [token, setToken] = useState(saved?.token || '')
   const [channel, setChannel] = useState(saved?.channel || '')
   const [connected, setConnected] = useState(saved !== null)
-  const [observerMode, setObserverMode] = useState(saved?.observer === true)
+  const observerMode = saved?.observer === true
   const [members, setMembers] = useState<Member[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
   const officeMembersKey = JSON.stringify(members.map(({ last_heartbeat_at, heartbeat_seq, ...rest }) => rest))
@@ -44,14 +27,6 @@ export default function App() {
     const present = new Set(officeMembers.filter(member => member.presence !== 'offline').map(member => member.session_id))
     return conversations.filter(item => item.gathering !== false && item.participants.some(id => present.has(id)))
   }, [officeMembers, conversations])
-  const [endedConversations, setEndedConversations] = useState<Conversation[]>([])
-  const [endedCursor, setEndedCursor] = useState<string | null>(null)
-  const [loadingEnded, setLoadingEnded] = useState(false)
-  const endedLoaded = useRef(false)
-  const endedPaged = useRef(false)
-  const endedHead = useRef<string | null>(null)
-  const endedGapAnchor = useRef<string | null>(null)
-  const [endedNotice, setEndedNotice] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [speech, setSpeech] = useState<Record<string, string>>({})
   const speechUntil = useRef(new Map<string, { text: string, until: number }>())
@@ -62,15 +37,9 @@ export default function App() {
   const [streamError, setStreamError] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
-  const [workFilter, setWorkFilter] = useState('')
-  const [workDraft, setWorkDraft] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [pauseMotion, setPauseMotion] = useState(false)
-  const [rooms, setRooms] = useState<OfficeRoom[]>([])
-  const [rootKey, setRootKey] = useState('')
-  const [roomKey, setRoomKey] = useState('')
-  const [roomName, setRoomName] = useState('')
   useEffect(() => {
     let remembered: string | null = null
     try { remembered = localStorage.getItem('offora.office') } catch { remembered = null }
@@ -81,15 +50,7 @@ export default function App() {
     const lookup = async () => {
       const root = hashKey || remembered
       if (!root) return
-      let key = root
-      const listing = await fetchRooms(root)
-      if (listing.length) {
-        let picked: string | null = null
-        try { picked = sessionStorage.getItem('offora.room') } catch { picked = null }
-        key = listing.find(room => room.key === picked)?.key ?? listing[0].key
-        setRooms(listing)
-      }
-      setRootKey(root); setRoomKey(key)
+      const key = root
       try { localStorage.setItem('offora.office', root) } catch { void 0 }
       const response = await fetch('/api/v1/auto/watch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ office_key: key }) })
       const result = await response.json()
@@ -110,26 +71,24 @@ export default function App() {
   const connectionGeneration = useRef(0)
   const recentMessages = useRef<Message[]>([])
   const historyStarted = useRef(false)
-  const scope = useRef<{ member: string | null, conversation: string | null, workRef: string }>({ member: null, conversation: null, workRef: '' })
-  const selectScope = useCallback((member: string | null, conversation: string | null, workRef = scope.current.workRef) => {
-    if (scope.current.member === member && scope.current.conversation === conversation && scope.current.workRef === workRef) return
-    scope.current = { member, conversation, workRef }
+  const scope = useRef<{ member: string | null, conversation: string | null }>({ member: null, conversation: null })
+  const selectScope = useCallback((member: string | null, conversation: string | null) => {
+    if (scope.current.member === member && scope.current.conversation === conversation) return
+    scope.current = { member, conversation }
     requestSequence.current++; connectionGeneration.current++
     recentMessages.current = []; historyStarted.current = false
     setHistoryNotice('')
     setMessages([]); setOlderMessages([]); setNextCursor(null); setLoadingOlder(false)
-    setSelected(member); setSelectedConversation(conversation); setWorkFilter(workRef)
+    setSelected(member); setSelectedConversation(conversation)
   }, [])
   const selectMember = useCallback((id: string) => selectScope(id, null), [selectScope])
   const selectConversation = useCallback((id: string) => selectScope(null, id), [selectScope])
   const refresh = useCallback(async (currentToken: string, currentChannel: string, signal?: AbortSignal) => {
     const sequence = ++requestSequence.current
     const anchor = recentMessages.current[0]?.message_id
-    const query = `?channel_id=${encodeURIComponent(currentChannel)}`
     const historyQuery = new URLSearchParams({ channel_id: currentChannel, order: 'sequence' })
     if (scope.current.member) historyQuery.set('actor_session_id', scope.current.member)
     if (scope.current.conversation) historyQuery.set('conversation_id', scope.current.conversation)
-    if (scope.current.workRef) historyQuery.set('work_ref', scope.current.workRef)
     const loadMembers = async () => {
       const members: Member[] = []
       let cursor: string | null = null
@@ -156,25 +115,12 @@ export default function App() {
       }
       throw new Error('進行中的交談超過 2000 組，無法完整顯示')
     }
-    const [people, history, discussions, ended] = await Promise.all([
+    const [people, history, discussions] = await Promise.all([
       loadMembers(),
       api<{ messages: Message[], next_cursor: string | null }>(`/api/v1/messages?${historyQuery}`, currentToken, { signal }),
       loadConversations(),
-      api<{ conversations: Conversation[], next_cursor: string | null }>(`/api/v1/conversations${query}&status=closed&page=1`, currentToken, { signal }),
     ])
     if (signal?.aborted || sequence !== requestSequence.current) return false
-    const endedBatch = [...ended.conversations]
-    let endedNext = ended.next_cursor
-    let endedPages = 1
-    while (endedHead.current && endedNext && !endedBatch.some(item => item.conversation_id === endedHead.current) && endedPages < 10) {
-      const params = new URLSearchParams({ channel_id: currentChannel, status: 'closed', page: '1', cursor: endedNext })
-      const page = await api<{ conversations: Conversation[], next_cursor: string | null }>(`/api/v1/conversations?${params}`, currentToken, { signal })
-      if (signal?.aborted || sequence !== requestSequence.current) return false
-      endedBatch.push(...page.conversations)
-      endedNext = page.next_cursor
-      endedPages++
-    }
-    const endedGap = Boolean(endedHead.current && endedNext && !endedBatch.some(item => item.conversation_id === endedHead.current))
     let batch = history.messages
     let cursor = history.next_cursor
     let pages = 1
@@ -208,11 +154,6 @@ export default function App() {
     setMessages(previous => JSON.stringify(previous) === JSON.stringify(batch) ? previous : batch)
     if (!historyStarted.current) { setNextCursor(history.next_cursor); historyStarted.current = true }
     setConversations(previous => JSON.stringify(previous) === JSON.stringify(discussions.conversations) ? previous : discussions.conversations)
-    setEndedConversations(previous => [...endedBatch, ...previous.filter(item => !endedBatch.some(current => current.conversation_id === item.conversation_id))])
-    if (endedGap) { endedGapAnchor.current = endedHead.current; setEndedCursor(endedNext); endedPaged.current = true; setEndedNotice('新增的已結束交談較多，請載入較早交談查看其餘紀錄。') }
-    else if (!endedLoaded.current || !endedPaged.current) setEndedCursor(ended.next_cursor)
-    endedLoaded.current = true
-    endedHead.current = ended.conversations[0]?.conversation_id ?? null
     return true
   }, [])
   useEffect(() => {
@@ -232,7 +173,7 @@ export default function App() {
         if (now - Date.parse(message.received_at) < 15000) speechUntil.current.set(message.actor_session_id, { text: message.payload.text, until: now + 15000 })
       }
       setSpeech(Object.fromEntries([...speechUntil.current].map(([id, value]) => [id, value.text])))
-      const incoming = messages.filter(message => (!scope.current.member || message.actor_session_id === scope.current.member) && (!scope.current.conversation || message.conversation_id === scope.current.conversation) && (!scope.current.workRef || message.payload.work_ref === scope.current.workRef))
+      const incoming = messages.filter(message => (!scope.current.member || message.actor_session_id === scope.current.member) && (!scope.current.conversation || message.conversation_id === scope.current.conversation))
       if (!incoming.length) return
       let batch = [...new Map([...incoming.reverse(), ...recentMessages.current].map(message => [message.message_id, message])).values()]
       if (batch.length > 500) {
@@ -333,16 +274,7 @@ export default function App() {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '更新失敗')
     })
     return () => controller.abort()
-  }, [connected, token, channel, selected, selectedConversation, workFilter, refresh])
-  async function connect(event: FormEvent) {
-    event.preventDefault(); setBusy(true); setError('')
-    try {
-      const credential = observerMode ? (await api<{ session_token: string }>('/api/v1/observers', token.trim(), { method: 'POST', body: JSON.stringify({ channel_id: channel.trim() }) })).session_token : token.trim()
-      await refresh(credential, channel.trim()); setToken(credential); setConnected(true)
-    }
-    catch (cause) { setError(cause instanceof Error ? cause.message : '連線失敗') }
-    finally { setBusy(false) }
-  }
+  }, [connected, token, channel, selected, selectedConversation, refresh])
   async function reload() {
     setBusy(true); setError('')
     try { await refresh(token.trim(), channel.trim()) }
@@ -357,7 +289,6 @@ export default function App() {
       const query = new URLSearchParams({ channel_id: channel.trim(), cursor: nextCursor, order: 'sequence' })
       if (scope.current.member) query.set('actor_session_id', scope.current.member)
       if (scope.current.conversation) query.set('conversation_id', scope.current.conversation)
-      if (scope.current.workRef) query.set('work_ref', scope.current.workRef)
       const history = await api<{ messages: Message[], next_cursor: string | null }>(`/api/v1/messages?${query}`, token.trim())
       if (generation !== connectionGeneration.current) return
       setOlderMessages(previous => [...previous, ...history.messages])
@@ -366,45 +297,16 @@ export default function App() {
     } catch (cause) { if (generation === connectionGeneration.current) setError(cause instanceof Error ? cause.message : '讀取較早訊息失敗') }
     finally { if (generation === connectionGeneration.current) setLoadingOlder(false) }
   }
-  async function loadOlderConversations() {
-    if (!endedCursor || loadingEnded) return
-    const generation = connectionGeneration.current
-    setLoadingEnded(true)
-    try {
-      const params = new URLSearchParams({ channel_id: channel.trim(), status: 'closed', page: '1', cursor: endedCursor })
-      const result = await api<{ conversations: Conversation[], next_cursor: string | null }>(`/api/v1/conversations?${params}`, token.trim())
-      if (generation !== connectionGeneration.current) return
-      setEndedConversations(previous => [...new Map([...previous, ...result.conversations].map(item => [item.conversation_id, item])).values()])
-      if (endedGapAnchor.current && (result.conversations.some(item => item.conversation_id === endedGapAnchor.current) || !result.next_cursor)) { endedGapAnchor.current = null; setEndedNotice('') }
-      endedPaged.current = true
-      setEndedCursor(result.next_cursor)
-    } catch (cause) { if (generation === connectionGeneration.current) setError(cause instanceof Error ? cause.message : '讀取較早交談失敗') }
-    finally { setLoadingEnded(false) }
-  }
-  function switchRoom(key: string) {
-    try { sessionStorage.setItem('offora.room', key) } catch { void 0 }
-    location.reload()
-  }
-  async function nameRoom(event: React.FormEvent) {
-    event.preventDefault()
-    const response = await fetch('/api/v1/auto/name', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ office_key: roomKey, name: roomName.trim() }) })
-    if (!response.ok) { setError('無法命名辦公室'); return }
-    setRoomName(''); setRooms(await fetchRooms(rootKey))
-  }
-  function disconnect() { if (connected && observerMode) void api('/api/v1/sessions/me/leave', token.trim(), { method: 'POST', body: '{}' }).catch(() => setError('觀察連線未能正常結束，請稍後再試。')); setObserverMode(false); requestSequence.current++; connectionGeneration.current++; scope.current = { member: null, conversation: null, workRef: '' }; recentMessages.current = []; historyStarted.current = false; endedLoaded.current = false; endedPaged.current = false; endedHead.current = null; endedGapAnchor.current = null; setEndedNotice(''); setEndedCursor(null); setLoadingEnded(false); setHistoryNotice(''); setStreamError(''); setConnected(false); setToken(''); setChannel(''); setMembers([]); setMessages([]); setOlderMessages([]); setNextCursor(null); setLoadingOlder(false); setConversations([]); setEndedConversations([]); setSelected(null); setSelectedConversation(null); setWorkFilter(''); setWorkDraft(''); setError('') }
   const selectedMember = members.find(member => member.session_id === selected)
-  const currentConversation = [...conversations, ...endedConversations].find(item => item.conversation_id === selectedConversation)
+  const currentConversation = conversations.find(item => item.conversation_id === selectedConversation)
   const allMessages = [...new Map([...messages, ...olderMessages].map(message => [message.message_id, message])).values()]
-  const selectedHistory = allMessages.find(message => message.actor_session_id === selected && message.actor_role && message.actor_code)
-  const selectedLabel = selectedMember ? `${selectedMember.role} ${selectedMember.code}` : selectedHistory ? `${selectedHistory.actor_role} ${selectedHistory.actor_code}（已離開）` : selected ? '已離開的成員' : '全部成員'
+  const selectedLabel = selectedMember?.summary || (selected ? '此成員的訊息' : '全部訊息')
   const visible = selectedConversation ? allMessages.filter(message => message.conversation_id === selectedConversation) : selected ? allMessages.filter(message => message.actor_session_id === selected) : allMessages
-  const sideEmpty = rooms.length <= 1 && conversations.length === 0 && endedConversations.length === 0 && !endedNotice && !endedCursor
   return <div className="app">
-    <header className="top"><div className="brand"><span className="brand-icon">✣</span> AI OFFICE</div><div className="top-space">{connected ? channel : ''}</div><div className="top-right">{connected && <><span className="dot green" />資料已載入</>}</div></header>
-    {!connected ? <main className="connect-wrap"><div className="connect-card"><h1>{busy ? '進入辦公室…' : 'AI OFFICE'}</h1>{error && <p className="error" role="alert">{error}</p>}</div></main> : <div className={`layout${sideEmpty ? ' no-side' : ''}`}>
-      {!sideEmpty && <aside className="sidebar">{rooms.length > 1 && <><div className="sidebar-heading">辦公室 <span>{rooms.length}</span></div>{rooms.map(room => <button key={room.key} className={`member ${roomKey === room.key ? 'selected' : ''}`} onClick={() => roomKey !== room.key && switchRoom(room.key)}><span><strong className="work">{roomTitle(room)}</strong><small>{roomIntro(room)}</small></span></button>)}</>}{conversations.length > 0 && <div className="sidebar-heading">進行中的交談 <span>{conversations.length}</span></div>}{conversations.map(item => <button key={item.conversation_id} className={`member ${selectedConversation === item.conversation_id ? 'selected' : ''}`} onClick={() => selectScope(null, item.conversation_id)}>{item.summary}{item.gathering === false ? "（已停止集合）" : ""}</button>)}{endedConversations.length > 0 && <div className="sidebar-heading">已結束的交談 <span>{endedConversations.length}</span></div>}{endedConversations.map(item => <button key={item.conversation_id} className={`member ${selectedConversation === item.conversation_id ? "selected" : ""}`} onClick={() => selectScope(null, item.conversation_id)}>{item.summary}</button>)}{endedNotice && <p className="sidebar-note" role="status">{endedNotice}</p>}{endedCursor && <button className="member" onClick={loadOlderConversations} disabled={loadingEnded}>{loadingEnded ? "讀取中…" : "載入較早交談"}</button>}</aside>}
-      <main className="main"><div className="view-bar"><strong>辦公室</strong><details className="roster"><summary>{members.filter(member => member.presence !== 'offline').length} 位上線・命名</summary><div className="roster-pop">{rooms.length > 0 && <form className="work-filter" onSubmit={nameRoom}><label htmlFor="room-name">幫目前的辦公室取名</label><div><input id="room-name" maxLength={40} value={roomName} onChange={event => setRoomName(event.target.value)} placeholder="例如：登入專案" /><button disabled={!roomName.trim()}>命名</button></div></form>}{members.filter(member => member.presence !== 'offline').map((member, index) => <button key={member.session_id} className={`member ${selected === member.session_id ? 'selected' : ''}`} onClick={() => selectMember(member.session_id)}><span className={`avatar avatar-${index % 4}`}>{index + 1}</span><span><strong className="work">{member.summary || '待命'}</strong>{(member.repo || member.computer) && <small>{[member.repo, member.computer].filter(Boolean).join('・')}</small>}{member.progress !== null && <><span className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={member.progress}><i style={{ width: `${member.progress}%` }} /><b>{member.progress}%</b></span><small>還剩 {100 - member.progress}%</small></>}</span></button>)}</div></details><button onClick={() => setPauseMotion(value => !value)} aria-pressed={pauseMotion}>{pauseMotion ? "恢復動畫" : "暫停動畫"}</button><button onClick={reload} disabled={busy}>更新資料</button></div><div className="office"><Office members={officeMembers} conversations={gatheringConversations} speech={speech} onSelect={selectMember} onSelectConversation={selectConversation} pauseMotion={pauseMotion} /></div><div className="status-strip"><span>● 成員資料</span><span>{gatheringConversations.length} 組正在集合</span><span>{streamError || "訊息持續更新；成員每 5 秒更新"}</span></div><div className="activity"><strong>最近訊息</strong><span>{messages.length ? `目前載入 ${messages.length} 則` : '尚無訊息'}</span></div></main>
-      <aside className="conversation"><div className="conversation-head"><h2>交談紀錄</h2><span>{currentConversation?.summary ?? (selectedConversation ? '已結束的交談' : selectedLabel)}</span>{(selected || selectedConversation) && <button onClick={() => selectScope(null, null)}>顯示全部</button>}</div>{selectedMember && <div className="profile"><strong>{selectedMember.role} {selectedMember.code}</strong><span>AI 身分：{selectedMember.agent_name || "尚未提供"}{selectedMember.agent_id ? `（${selectedMember.agent_id}）` : ""}</span><span>模型：{selectedMember.model}</span><span>最後回報：{selectedMember.last_heartbeat_at ? new Date(selectedMember.last_heartbeat_at).toLocaleString("zh-TW") : "尚未回報"}</span><span>{selectedMember.summary || '尚無工作摘要'}</span><span>任務：{selectedMember.goal || '尚未登記'}</span><span>repo：{selectedMember.repo || '尚未登記'}</span><span>電腦：{selectedMember.computer || '尚未登記'}{selectedMember.environment ? `（${selectedMember.environment}）` : ''}</span></div>}<form className="work-filter" onSubmit={event => { event.preventDefault(); selectScope(selected, selectedConversation, workDraft.trim()) }}><label htmlFor="work-filter">工作參照</label><div><input id="work-filter" maxLength={128} value={workDraft} onChange={event => setWorkDraft(event.target.value)} placeholder="輸入工作參照" /><button>篩選</button>{workFilter && <button type="button" onClick={() => { setWorkDraft(''); selectScope(selected, selectedConversation, '') }}>清除</button>}</div></form><div className="messages" aria-live="polite">{historyNotice && <p role="status">{historyNotice}</p>}{nextCursor && <button className="load-older" onClick={loadOlder} disabled={loadingOlder}>{loadingOlder ? "讀取中…" : "載入較早訊息"}</button>}{visible.length === 0 ? <p className="empty">沒有符合的訊息</p> : [...visible].reverse().map(message => { const author = members.find(member => member.session_id === message.actor_session_id); const original = message.reply_to ? allMessages.find(item => item.message_id === message.reply_to) : undefined; const kind = typeof message.payload.kind === 'string' && Object.prototype.hasOwnProperty.call(messageKinds, message.payload.kind) ? messageKinds[message.payload.kind] : undefined; const work = typeof message.payload.work_ref === 'string' ? message.payload.work_ref : ''; const parentWork = typeof message.payload.parent_work_ref === 'string' ? message.payload.parent_work_ref : ''; return <article className="message" key={message.message_id}><div><button className="message-author" onClick={() => selectMember(message.actor_session_id)} aria-label={`查看 ${message.actor_role && message.actor_code ? `${message.actor_role} ${message.actor_code}` : author ? `${author.role} ${author.code}` : '此成員'}的訊息`}>{message.actor_role && message.actor_code ? `${message.actor_role} ${message.actor_code}` : author ? `${author.role} ${author.code}` : '其他成員'}</button><time>{new Date(message.received_at).toLocaleString('zh-TW')}</time></div>{(kind || work || parentWork) && <div className="message-meta">{kind && <span>{kind}</span>}{work && <span>工作：{work}</span>}{parentWork && <span>上層工作：{parentWork}</span>}</div>}{message.reply_to && <div className="reply-reference">{original ? `回覆：${original.payload.text.slice(0, 100)}` : message.reply_excerpt != null ? `回覆：${message.reply_excerpt}` : '回覆其他訊息'}</div>}<p>{message.payload.text}</p>{Boolean(message.readers?.length) && <div className="message-meta">已讀：{message.readers?.map(reader => `${reader.role} ${reader.code}`).join("、")}</div>}</article> })}</div>{error && <p className="error" role="alert">{error}</p>}<p className="footer-note">顯示已保存的訊息；訊息送達不代表對方已讀。</p></aside>
+    <header className="top"><div className="brand"><span className="brand-icon">✣</span> AI OFFICE</div><div className="top-right">{connected && <><span className="dot green" />資料已載入</>}</div></header>
+    {!connected ? <main className="connect-wrap"><div className="connect-card"><h1>{busy ? '進入辦公室…' : 'AI OFFICE'}</h1>{error && <p className="error" role="alert">{error}</p>}</div></main> : <div className="layout no-side">
+      <main className="main"><div className="view-bar"><strong>辦公室</strong><details className="roster"><summary>{members.filter(member => member.presence !== 'offline').length} 位上線</summary><div className="roster-pop">{members.filter(member => member.presence !== 'offline').map((member, index) => <button key={member.session_id} className={`member ${selected === member.session_id ? 'selected' : ''}`} onClick={() => selectMember(member.session_id)}><span className={`avatar avatar-${index % 4}`}>{index + 1}</span><span><strong className="work">{member.summary || '待命'}</strong>{member.progress !== null && <><span className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={member.progress}><i style={{ width: `${member.progress}%` }} /><b>{member.progress}%</b></span><small>還剩 {100 - member.progress}%</small></>}</span></button>)}</div></details><button onClick={() => setPauseMotion(value => !value)} aria-pressed={pauseMotion}>{pauseMotion ? "恢復動畫" : "暫停動畫"}</button><button onClick={reload} disabled={busy}>更新資料</button></div><div className="office"><Office members={officeMembers} conversations={gatheringConversations} speech={speech} onSelect={selectMember} onSelectConversation={selectConversation} pauseMotion={pauseMotion} /></div><div className="status-strip"><span>{streamError || "訊息持續更新"}</span></div><div className="activity"><strong>最近訊息</strong><span>{messages.length ? `目前載入 ${messages.length} 則` : '尚無訊息'}</span></div></main>
+      <aside className="conversation"><div className="conversation-head"><h2>交談紀錄</h2><span>{currentConversation?.summary ?? (selectedConversation ? '已結束的交談' : selectedLabel)}</span>{(selected || selectedConversation) && <button onClick={() => selectScope(null, null)}>顯示全部</button>}</div>{selectedMember && <div className="profile"><strong>{selectedMember.summary || '待命'}</strong>{selectedMember.progress !== null && <span>進度 {selectedMember.progress}%</span>}</div>}<div className="messages" aria-live="polite">{historyNotice && <p role="status">{historyNotice}</p>}{nextCursor && <button className="load-older" onClick={loadOlder} disabled={loadingOlder}>{loadingOlder ? "讀取中…" : "載入較早訊息"}</button>}{visible.length === 0 ? <p className="empty">沒有符合的訊息</p> : [...visible].reverse().map(message => { const author = members.find(member => member.session_id === message.actor_session_id); const authorLabel = message.actor_code ? `${message.actor_role || 'AI'} ${message.actor_code}` : author ? `${author.role} ${author.code}` : '其他成員'; const original = message.reply_to ? allMessages.find(item => item.message_id === message.reply_to) : undefined; const kind = typeof message.payload.kind === 'string' && Object.prototype.hasOwnProperty.call(messageKinds, message.payload.kind) ? messageKinds[message.payload.kind] : undefined; return <article className="message" key={message.message_id}><div><button className="message-author" onClick={() => selectMember(message.actor_session_id)} aria-label={`查看${authorLabel}的訊息`}>{authorLabel}</button><time>{new Date(message.received_at).toLocaleString('zh-TW')}</time></div>{kind && <div className="message-meta"><span>{kind}</span></div>}{message.reply_to && <div className="reply-reference">{original ? `回覆：${original.payload.text.slice(0, 100)}` : message.reply_excerpt != null ? `回覆：${message.reply_excerpt}` : '回覆其他訊息'}</div>}<p>{message.payload.text}</p>{Boolean(message.readers?.length) && <div className="message-meta">已讀：{message.readers?.map(reader => `${reader.role} ${reader.code}`).join("、")}</div>}</article> })}</div>{error && <p className="error" role="alert">{error}</p>}<p className="footer-note">顯示已保存的訊息；訊息送達不代表對方已讀。</p></aside>
     </div>}
   </div>
 }

@@ -3,6 +3,7 @@ export COMPOSE_PROJECT_NAME=pixel-office-smoke
 export APP_PORT=18781
 export APP_VERSION="${APP_VERSION:-smoke}"
 export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-local-smoke-only}"
+export OFFORA_AUTO_JOIN=1
 exec 9>/tmp/pixel-office-smoke.lock
 flock -n 9 || { echo '另一個基礎設施驗收正在執行'; exit 1; }
 trap 'docker compose stop' EXIT
@@ -31,6 +32,9 @@ try:
 except urllib.error.HTTPError as e:
  assert e.code == 401
 PYTEST
+docker compose run --rm --no-deps -T api offora migrate
+OFFORA_TEST_URL=http://127.0.0.1:18781 python3 tests/mcp_roster_integration.py
+OFFORA_TEST_URL=http://127.0.0.1:18781 python3 tests/mcp_integration.py
 docker compose stop db
 python3 - <<'PYTEST'
 import json,urllib.request,urllib.error
